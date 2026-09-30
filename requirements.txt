@@ -1,0 +1,14 @@
+streamlit
+dashscope
+pandas
+openpyxl
+pillow
+langchain
+chromadb
+sentence-transformers
+PyPDF2
+numpy
+plotly
+langchain-community
+langchain-text-splitters
+pypdf
