@@ -30,11 +30,21 @@ def reset_question():
     st.session_state.student_input = ""
     st.rerun() # 刷新整个页面
 
+#====密钥输入框，网页上手动输入=====
+# api_key = st.text_input("请输入DashScope API密钥", type="password")
+# if api_key:
+#     dashscope.api_key = api_key
+# else:
+#     st.warning("请输入API密钥才能调用大模型")
+
+
+
 import streamlit as st
 import os
 
 # 从streamlit后台secrets读取DASHSCOPE_API_KEY
 try:
+    # 线上部署
     DASHSCOPE_API_KEY = st.secrets["DASHSCOPE_API_KEY"]
 except:
     # 本地调试时，优先读取环境变量；线上部署走上面st.secrets
@@ -48,7 +58,9 @@ if not DASHSCOPE_API_KEY:
 # 初始化dashscope
 import dashscope
 dashscope.api_key = DASHSCOPE_API_KEY
-#
+
+
+
 # # RAG相关导入
 # from langchain_community.document_loaders import PyPDFLoader
 # from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -513,3 +525,11 @@ if os.path.exists(file_name):
     st.write(f"**AI题目引导回复：**")
     st.text_area("", value=selected_row["AI题目引导回复"], height=120, disabled=True)
     st.write(f"**A**")
+
+
+
+
+
+
+
+
