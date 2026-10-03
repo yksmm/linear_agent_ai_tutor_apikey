@@ -12,3 +12,9 @@ plotly
 langchain-community
 langchain-text-splitters
 pypdf
+
+
+streamlit>=1.35.0
+pillow>=10.0.0
+openpyxl>=3.1.0
+dashscope>=1.14.0
