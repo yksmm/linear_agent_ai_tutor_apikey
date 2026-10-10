@@ -697,10 +697,7 @@ if uploaded_file is not None:
             text = re.sub(
                 r"[^\w\s，。！？、；：()（）\-\—\[\]{}<>=≠≤≥±×÷∑∏∫√∂∇∈∉∋∌∩∪⊂⊃⊄⊅⊆⊇⊈⊉⊊⊋⊥∥∠°παβγδεζηθλμνξοπρστυφχψωΑΒΓΔΕΖΗΘΙΚΛΜΝΞΟΠΡΣΤΥΦΧΨΩ]+",
                 "", text)
-            # 合并多余空行
-            text = re.sub(r"\n{2,}", "\n", text)
-            return text.strip()
-
+           
 
         clean_guide = clean_ai_text(ai_guide_result)
         st.markdown(f"<h3 style='color:#1F3864;'>AI题目引导</h3>", unsafe_allow_html=True)
@@ -712,9 +709,64 @@ if uploaded_file is not None:
 
 st.divider()
 
-# -------- 学生推导输入 & 批改模块 --------
-st.subheader("✍ 写下你的推导/证明思路")
-student_reason = st.text_area("把你的思考过程写在这里，AI结合知识库帮你检查概念错误", height=150, key="student_text")
+
+
+# ===== 学生推导过程上传模块 =====
+st.subheader("✍️ 你的推导过程")
+tab1, tab2 = st.tabs(["📝 文字输入推导", "🖼️ 上传手写照片"])
+
+with tab1:
+    # 文本输入框，保存到session_state
+    student_text = st.text_area(
+        "在这里写下你的推导步骤",
+        value=st.session_state.get("student_input", ""),
+        height=220,
+        key="student_text_input"
+    )
+    if st.button("提交文字推导，AI批改", key="submit_text"):
+        st.session_state["student_input"] = student_text
+        # 拼接prompt，把学生推导发给大模型
+        check_prompt = f"""
+原题：{st.session_state.question}
+参考答案：{st.session_state.ai_answer}
+学生手写推导：{student_text}
+任务：对比学生推导，找出逻辑漏洞、概念错误，用启发式提问，不要直接给完整答案。
+要求：精简，使用LaTeX公式。
+"""
+        # 调用百炼API，获得批改结果
+        with st.spinner("正在分析你的推导..."):
+            resp = dashscope.Generation.call(
+                model="qwen-turbo",
+                messages=[{"role":"user","content":check_prompt}],
+                result_format="message"
+            )
+            feedback = resp.output.choices[0].message.content
+        st.markdown("### 📋 AI反馈")
+        st.markdown(feedback)
+
+with tab2:
+    # 图片上传，用于手写推导照片
+    upload_img = st.file_uploader("上传手写推导图片（jpg/png）", type=["jpg","png"], key="student_img")
+    if upload_img is not None:
+        img = Image.open(upload_img)
+        st.image(img, caption="你的手写推导", use_column_width=True)
+        if st.button("提交图片，AI识别批改", key="submit_img"):
+            # 多模态调用qwen3-vl-plus识别手写推导
+            with st.spinner("识别手写推导并批改..."):
+                conv = MultiModalConversation()
+                conv.add_text("原题："+st.session_state.question + "\n对比参考答案，找出推导错误，启发式引导，不要直接写完整答案，使用LaTeX公式。")
+                conv.add_image(img)
+                resp = dashscope.MultiModalConversation.call(
+                    model="qwen-vl-plus",
+                    messages=conv.messages
+                )
+                feedback_img = resp.output.choices[0].message.content
+            st.markdown("### 📋 AI反馈")
+            st.markdown(feedback_img)
+
+# ====重置按钮（清空学生推导，保留题目）====
+if st.button("清空我的推导", on_click=reset_question):
+    st.success("已清空推导内容，可以重新作答")
 
 check_btn = st.button(" 检查我的推导（检索知识库）")
 if check_btn and student_reason.strip() != "":
