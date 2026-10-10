@@ -1,8 +1,14 @@
+import sys
+
+sys.stdout.reconfigure(encoding="utf-8")
+sys.stdin.reconfigure(encoding="utf-8")
+
 # import os
 # #使用国内镜像
 # os.environ["HF_ENDPOINT"]="https://hf-mirror.com"
 
 import os
+import re
 import io
 import base64
 from PIL import Image
@@ -12,54 +18,114 @@ import dashscope
 from dashscope import MultiModalConversation
 import streamlit as st
 
+
 def reset_question():
-    st.session_state.ai_answer=""
-    st.session_state.student_input=""
+    st.session_state.ai_answer = ""
+    st.session_state.student_input = ""
     st.rerun()
 
 
-# 初始化会话状态
+# ======初始化会话状态=======
 if "ai_answer" not in st.session_state:
     st.session_state.ai_answer = ""
 if "student_input" not in st.session_state:
     st.session_state.student_input = ""
+if "show_short_ans" not in st.session_state:
+    st.session_state.show_short_ans = False
+if "show_similar" not in st.session_state:
+    st.session_state.show_similar = False
+if "show_similar_ans" not in st.session_state:
+    st.session_state.show_similar_ans = False
+
+if "full_text" not in st.session_state:
+    st.session_state.full_text = ""
+if "short_text" not in st.session_state:
+    st.session_state.short_text = ""
+if "similar_text" not in st.session_state:
+    st.session_state.similar_text = ""
+if "similar_ans_text" not in st.session_state:
+    st.session_state.similar_ans_text = ""
+
+
+# 回调函数
+def show_short_answer():
+    st.session_state.show_short_ans = True
+
+
+def show_similar_exercise():
+    st.session_state.show_similar = True
+
+
+def show_similar_answer():
+    st.session_state.show_similar_ans = True
+
+
+def reset_all():
+    st.session_state.show_short_ans = False
+    st.session_state.show_similar = False
+    st.session_state.show_similar_ans = False
+    st.session_state.full_text = ""
+    st.session_state.short_text = ""
+    st.session_state.similar_text = ""
+    st.session_state.similar_ans_text = ""
+    st.rerun()
+
+
+# ====限制内容宽度=====
+st.markdown("""
+<style>
+    .block-container {
+        max-width: 960px;
+        margin: 0 auto;
+    }
+
+    p, li {
+        line-height: 1.8;
+        font-size: 15px;
+    }
+
+    h1, h2, h3 {
+        margin-top: 20px;
+        margin-bottom: 12px;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 
 # 重置函数：清空答题状态，保留学情记录
 def reset_question():
     st.session_state.ai_answer = ""
     st.session_state.student_input = ""
-    st.rerun() # 刷新整个页面
-
-#====密钥输入框，网页上手动输入=====
-# api_key = st.text_input("请输入DashScope API密钥", type="password")
-# if api_key:
-#     dashscope.api_key = api_key
-# else:
-#     st.warning("请输入API密钥才能调用大模型")
+    st.rerun()  # 刷新整个页面
 
 
+# ====密钥输入框，网页上手动输入=====
+api_key = st.text_input("请输入DashScope API密钥", type="password")
+if api_key:
+    dashscope.api_key = api_key
+else:
+    st.warning("请输入API密钥才能调用大模型")
 
 import streamlit as st
 import os
 
 # 从streamlit后台secrets读取DASHSCOPE_API_KEY
-try:
-    # 线上部署
-    DASHSCOPE_API_KEY = st.secrets["DASHSCOPE_API_KEY"]
-except:
-    # 本地调试时，优先读取环境变量；线上部署走上面st.secrets
-    DASHSCOPE_API_KEY = os.getenv("DASHSCOPE_API_KEY")
+# try:
+#     # 线上部署
+#     DASHSCOPE_API_KEY = st.secrets["DASHSCOPE_API_KEY"]
+# except:
+#     # 本地调试时，优先读取环境变量；线上部署走上面st.secrets
+#     DASHSCOPE_API_KEY = os.getenv("DASHSCOPE_API_KEY")
+#
+# # 校验密钥是否存在
+# if not DASHSCOPE_API_KEY:
+#     st.error("API密钥缺失！线上版本请在Secrets配置密钥，本地可设置环境变量。")
+#     st.stop()
 
-# 校验密钥是否存在
-if not DASHSCOPE_API_KEY:
-    st.error("API密钥缺失！线上版本请在Secrets配置密钥，本地可设置环境变量。")
-    st.stop()
-
-# 初始化dashscope
-import dashscope
-dashscope.api_key = DASHSCOPE_API_KEY
-
-
+# # 初始化dashscope
+# import dashscope
+#
+# dashscope.api_key = DASHSCOPE_API_KEY
 
 # # RAG相关导入
 # from langchain_community.document_loaders import PyPDFLoader
@@ -91,20 +157,197 @@ SYSTEM_PROMPT = """
 【知识点】本题涉及的教材知识点，顿号分隔（如：矩阵的秩、子矩阵、极大无关组）
 【混淆】学生是否混淆了某定理/概念，写出具体混淆点，无则写"无"
 【不明白】学生推导中暴露出的、尚未掌握的内容，无则写"无"
+
+你是线代启明星，回答线性代数题目严格使用下面固定格式：
+
+输出分为三部分，严格使用标记【---SPLIT1---】、【---SPLIT2---】、【---SPLIT3---】分隔，不要多余文字。
+
+第一部分（完整版，给用户学习）严格格式：
+### 题目
+抄写原题
+### ✅ 核心知识点（整齐罗列，每条简短）
+1. 知识点1：一句话简述
+2. 知识点2：一句话简述
+3. 知识点3：一句话简述
+
+输出规则：
+1. 每一条知识点/要点，必须使用【1. 2. 3.】有序列表，每一条写完必须换行，**全部顶格写，不要首行缩进**。
+2. 不要写大段连在一起的长文本，一条要点单独一行，分段中间隔两行再写下一段。
+3. 不要用>引用块（引用块会自带缩进）。
+4. 不要在开头加空格、Tab。
+
+
+### 📝 解题/证明过程
+分步书写，每一步标注依据，公式规范，逻辑清晰
+### 📋 最终总结
+一句话总结本题核心结论与解题思路
+
+【---SPLIT1---】
+
+第二部分（精简抄写版，按钮触发展示）：
+只保留作业可以直接抄写的解题/证明步骤，不要知识点、不要总结、不要多余解释，公式规范。
+
+【---SPLIT2---】
+
+第三部分（举一反三同类练习题）：
+输出**2道**同考点、同思路、变式练习题，每道题前面标注难度【简单/中等/难题】。
+只写题目，不写答案，用来给学生自主练习巩固。
+标题：📚 举一反三 · 同类变式练习题
+
+
+【---SPLIT3---】
+
+第四部分（变式题参考答案）：
+对应上面2道练习题，给出完整解答，公式规范。
+标题：✅ 变式题参考答案
+
+
+最后输出：🔘【点击整理精简答案】
+当用户点击【点击整理精简答案】后，输出精简版答案，去掉知识点罗列，只保留可直接抄写的解题/证明步骤。
+
+要求：知识点只写本题用到的，不要冗余；步骤严谨，符合大学线性代数作业书写规范。
+
+输出禁止使用<和>尖括号，不要输出任何HTML标签。向量、矩阵不要用尖括号表示。
+
+
+
+请用清晰的 Markdown 格式输出，不要使用 < > 尖括号，不要输出任何 HTML 标签。
+
+
 """
 
-#======缓存变量，保存图片解析的AI引导内容=====
+
+# ========== 处理用户提问 ==========
+# 输入框，把用户输入保存到 user_input 变量
+user_input = st.text_area("请输入你的线代问题：", height=180)
+
+if user_input:
+    # 只调用一次大模型
+    resp = dashscope.Generation.call(
+        model="qwen-turbo",
+        temperature=0.1,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_input}
+        ],
+        result_format="message"
+    )
+
+    total_content = resp.output.choices[0].message.content
+
+
+    # 排版美化
+    total_content = re.sub(r'<.*?>', '', total_content)
+    total_content = re.sub(r'(?<!\n)(\d+\. )', r'\n\n\1', total_content)
+    total_content = re.sub(r'。', r'。\n\n', total_content)
+    total_content = "# 📘 线性代数解答\n\n" + total_content
+
+    st.subheader("📘 结果展示")
+    with st.expander("📖 查看完整解答", expanded=True):
+        st.markdown(total_content, unsafe_allow_html=False)
+
+    # =========过滤尖括号，解决浏览器报错========
+    import re
+
+    total_content = re.sub(r'<.*?>', '', total_content)
+
+    st.subheader("📘 完整解答")
+    with st.container():
+        st.markdown(total_content, unsafe_allow_html=False)
+
+    st.divider()
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.subheader("✅ 精简答案")
+        st.info(short_part if 'short_part' in locals() else "暂无")
+
+    with col2:
+        st.subheader("🔁 同类题思路")
+        st.warning(similar_part if 'similar_part' in locals() else "暂无")
+
+    # 容错分割四段内容
+    part1 = total_content.split("【---SPLIT1---】")
+    if len(part1) >= 2:
+        full_part = part1[0].strip()
+        remain = part1[1]
+        part2 = remain.split("【---SPLIT2---】")
+        if len(part2) >= 2:
+            short_part = part2[0].strip()
+            similar_part = part2[1].strip()
+        else:
+            short_part = remain
+            similar_part = "⚠️ 变式练习题生成失败，请重新提问"
+    else:
+        full_part = total_content
+        short_part = "⚠️ 精简答案生成失败，请重新提问"
+        similar_part = "⚠️ 变式练习题生成失败，请重新提问"
+
+    # 存入session_state
+    st.session_state.full_text = full_part
+    st.session_state.short_text = short_part
+    st.session_state.similar_text = similar_part
+    st.session_state.show_short_ans = False
+    st.session_state.show_similar = False
+
+    # 展示完整版解析
+    with st.chat_message("assistant"):
+        st.markdown(st.session_state.full_text)
+
+    # 并排两个功能按钮
+    col1, col2 = st.columns(2)
+    with col1:
+        st.button("📝 点击整理精简答案（作业抄写版）",
+                  on_click=show_short_answer,
+                  type="primary",
+                  use_container_width=True)
+    with col2:
+        st.button("📚 举一反三，查看同类练习题",
+                  on_click=show_similar_exercise,
+                  use_container_width=True)
+    # 在每一条有序列表前增加换行，强制分段
+    total_content = re.sub(r'<.*?>', '', total_content)
+    total_content = re.sub(r'(?<!\n)(\d+\. )', r'\n\n\1', total_content)
+    # 渲染
+    st.subheader("📘 线性代数解答")
+    with st.expander("📘 查看完整解答", expanded=True):
+        st.markdown(total_content, unsafe_allow_html=False)
+
+
+
+
+# 展示精简答案
+if st.session_state.full_text != "" and st.session_state.show_short_ans:
+    st.divider()
+    st.subheader("✅ 精简抄写版答案")
+    st.markdown(st.session_state.short_text)
+
+# 展示变式练习题 + 【查看变式题答案】按钮
+if st.session_state.full_text != "" and st.session_state.show_similar:
+    st.divider()
+    st.subheader("📚 举一反三 · 同类变式练习题")
+    st.markdown(st.session_state.similar_text)
+    st.button("📖 查看变式题答案", on_click=show_similar_answer, use_container_width=True)
+
+# 展示变式题参考答案
+if st.session_state.full_text != "" and st.session_state.show_similar_ans:
+    st.divider()
+    st.subheader("✅ 变式题参考答案")
+    st.markdown(st.session_state.similar_ans_text)
+
+# 重置按钮
+if st.session_state.full_text != "":
+    st.button("🔄 重置，开始下一题", on_click=reset_all)
+
+# ======缓存变量，保存图片解析的AI引导内容=====
 ai_guide_result = ""
 question_desc = ""
 
-
-
-
-
 # ====================== RAG知识库配置 ======================
-#PERSIST_DIR = "./chroma_db"
-#embedding_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
-#text_splitter = RecursiveCharacterTextSplitter(
+# PERSIST_DIR = "./chroma_db"
+# embedding_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+# text_splitter = RecursiveCharacterTextSplitter(
 #    chunk_size=500,
 #     chunk_overlap=100,
 #     separators=["\n\n", "\n", "。", "；"]
@@ -122,8 +365,6 @@ question_desc = ""
 #     return content
 
 
-
-
 # ========== 学情保存：只记知识点与混淆点，不记启发式引导 ==========
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -139,14 +380,14 @@ ai_knowledge_points = []
 ai_confused_theorem = "无"
 ai_unclear_point = "无"
 
-
 # =========【提交按钮】=========
 if st.button("提交作答，获取AI诊断"):
     # 1.调用大模型，返回结果赋值resp
-    resp = 你的大模型请求函数(图片,学生输入)
+    resp = 你的大模型请求函数(图片, 学生输入)
 
     # 2. 在这里写正则提取！！放在if里面，resp已经有值
     import re
+
     ai_knowledge_points = []
     ai_confused_theorem = "无"
     ai_unclear_point = "无"
@@ -172,8 +413,6 @@ if st.button("提交作答，获取AI诊断"):
         unclear_point=ai_unclear_point,
         answer_status="引导后完成"
     )
-
-
 
 
 def save_learning_record(student_name, student_id, knowledge_points, theorem_confused, unclear_point, answer_status):
@@ -205,11 +444,10 @@ def save_learning_record(student_name, student_id, knowledge_points, theorem_con
     wb.save(EXCEL_FILE)
 
 
-
-#========美化excel表格函数========
+# ========美化excel表格函数========
 def beautify_sheet(ws):
     # 表头样式
-    header_fill = PatternFill("solid", fgColor="4472C4")   # 蓝色表头
+    header_fill = PatternFill("solid", fgColor="4472C4")  # 蓝色表头
     header_font = Font(name="微软雅黑", bold=True, color="FFFFFF", size=11)
     thin = Side(style="thin", color="D9D9D9")
     border = Border(left=thin, right=thin, top=thin, bottom=thin)
@@ -227,7 +465,7 @@ def beautify_sheet(ws):
             cell.alignment = Alignment(vertical="center", wrap_text=True)
 
     # 奇偶行交替底色（更美观）
-    row_fill = PatternFill("solid", fgColor="D9EAF7")   # 浅蓝
+    row_fill = PatternFill("solid", fgColor="D9EAF7")  # 浅蓝
     for i, row in enumerate(ws.iter_rows(min_row=2), start=0):
         if i % 2 == 1:
             for cell in row:
@@ -243,20 +481,17 @@ def beautify_sheet(ws):
     ws.row_dimensions[1].height = 24
 
 
-
-
-
-
 # ====================== Streamlit页面开始 ======================
 import streamlit as st
+
 st.set_page_config(page_title="线代启明星", layout="wide")
 st.markdown("<h1 style='color:#1F3864;'>线代启明星｜启真问智大赛</h1>", unsafe_allow_html=True)
 
-#=============页面最底部下一题按钮============
+# =============页面最底部下一题按钮============
 st.divider()
 if st.button("下一题（重置答题）"):
     reset_question()
-    #清空session，重置页面
+    # 清空session，重置页面
     st.session_state["img_upload"] = None
     st.session_state["student_input"] = ""
     st.rerun()
@@ -373,7 +608,7 @@ st.divider()
 st.subheader("上传线性代数证明题图片（可直接拖拽图片到框内）")
 uploaded_file = st.file_uploader(
     "直接把照片拖入此处，或者点击Upload上传 | 200MB · JPG, PNG",
-    type=["jpg","png"],
+    type=["jpg", "png"],
     key="img_upload"
 )
 
@@ -401,7 +636,7 @@ if uploaded_file is not None:
     # RAG检索
     question_text = "这道线性代数证明题，需要用到哪些定理定义"
     # rag_context = search_knowledge(question_text)
-    rag_context=""
+    rag_context = ""
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {
@@ -458,8 +693,8 @@ student_reason = st.text_area("把你的思考过程写在这里，AI结合知�
 
 check_btn = st.button(" 检查我的推导（检索知识库）")
 if check_btn and student_reason.strip() != "":
-    #rag_student_context = search_knowledge(student_reason)
-    rag_student_context=""#先跳过检索函数
+    # rag_student_context = search_knowledge(student_reason)
+    rag_student_context = ""  # 先跳过检索函数
     resp_student = MultiModalConversation.call(
         model="qwen3-vl-plus",
         messages=[
