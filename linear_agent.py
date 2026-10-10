@@ -18,79 +18,16 @@ import dashscope
 from dashscope import MultiModalConversation
 import streamlit as st
 
-
-def reset_question():
-    st.session_state.ai_answer = ""
-    st.session_state.student_input = ""
-    st.rerun()
-
-
-# ======初始化会话状态=======
-if "ai_answer" not in st.session_state:
-    st.session_state.ai_answer = ""
-if "student_input" not in st.session_state:
-    st.session_state.student_input = ""
-if "show_short_ans" not in st.session_state:
-    st.session_state.show_short_ans = False
-if "show_similar" not in st.session_state:
-    st.session_state.show_similar = False
-if "show_similar_ans" not in st.session_state:
-    st.session_state.show_similar_ans = False
-
-if "full_text" not in st.session_state:
-    st.session_state.full_text = ""
-if "short_text" not in st.session_state:
-    st.session_state.short_text = ""
-if "similar_text" not in st.session_state:
-    st.session_state.similar_text = ""
-if "similar_ans_text" not in st.session_state:
-    st.session_state.similar_ans_text = ""
-
-
-# 回调函数
-def show_short_answer():
-    st.session_state.show_short_ans = True
-
-
-def show_similar_exercise():
-    st.session_state.show_similar = True
-
-
-def show_similar_answer():
-    st.session_state.show_similar_ans = True
-
-
-def reset_all():
-    st.session_state.show_short_ans = False
-    st.session_state.show_similar = False
-    st.session_state.show_similar_ans = False
-    st.session_state.full_text = ""
-    st.session_state.short_text = ""
-    st.session_state.similar_text = ""
-    st.session_state.similar_ans_text = ""
-    st.rerun()
-
-
-# ====限制内容宽度=====
-st.markdown("""
-<style>
-    .block-container {
-        max-width: 960px;
-        margin: 0 auto;
-    }
-
-    p, li {
-        line-height: 1.8;
-        font-size: 15px;
-    }
-
-    h1, h2, h3 {
-        margin-top: 20px;
-        margin-bottom: 12px;
-    }
-</style>
-""", unsafe_allow_html=True)
-
+# ============【新增：文本自动分段美化函数】============
+def format_answer_text(raw_str):
+    # 清除多余html标签
+    text = re.sub(r'<.*?>', '', raw_str)
+    # 数字序号1. 2. 前面自动增加空行
+    text = re.sub(r'(?<!\n)(\d+\. )', r'\n\n\1', text)
+    # 中文句号后面换行，实现段落分割
+    text = re.sub(r'。', r'。\n\n', text)
+    return text
+# =====================================================
 
 # 重置函数：清空答题状态，保留学情记录
 def reset_question():
@@ -105,7 +42,7 @@ def reset_question():
 #     dashscope.api_key = api_key
 # else:
 #     st.warning("请输入API密钥才能调用大模型")
-# 
+#
 # import streamlit as st
 # import os
 
@@ -166,54 +103,182 @@ SYSTEM_PROMPT = """
 ### 题目
 抄写原题
 ### ✅ 核心知识点（整齐罗列，每条简短）
+"""
+
+# ======初始化会话状态=======
+if "ai_answer" not in st.session_state:
+    st.session_state.ai_answer = ""
+if "student_input" not in st.session_state:
+    st.session_state.student_input = ""
+if "show_short_ans" not in st.session_state:
+    st.session_state.show_short_ans = False
+if "show_similar" not in st.session_state:
+    st.session_state.show_similar = False
+if "show_similar_ans" not in st.session_state:
+    st.session_state.show_similar_ans = False
+
+if "full_text" not in st.session_state:
+    st.session_state.full_text = ""
+if "short_text" not in st.session_state:
+    st.session_state.short_text = ""
+if "similar_text" not in st.session_state:
+    st.session_state.similar_text = ""
+if "similar_ans_text" not in st.session_state:
+    st.session_state.similar_ans_text = ""
+
+
+# 回调函数
+def show_short_answer():
+    st.session_state.show_short_ans = True
+
+
+def show_similar_exercise():
+    st.session_state.show_similar = True
+
+
+def show_similar_answer():
+    st.session_state.show_similar_ans = True
+
+
+def reset_all():
+    st.session_state.show_short_ans = False
+    st.session_state.show_similar = False
+    st.session_state.show_similar_ans = False
+    st.session_state.full_text = ""
+    st.session_state.short_text = ""
+    st.session_state.similar_text = ""
+    st.session_state.similar_ans_text = ""
+    st.rerun()
+
+
+# ====限制内容宽度 + 修复行高，解决文字挤在一起=====
+st.markdown("""
+<style>
+    .block-container {
+        max-width: 960px;
+        margin: 0 auto;
+    }
+
+    p, li {
+        line-height: 1.7;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+
+
+# 重置函数：清空答题状态，保留学情记录
+def reset_question():
+    st.session_state.ai_answer = ""
+    st.session_state.student_input = ""
+    st.rerun()  # 刷新整个页面
+
+
+# # ====密钥输入框，网页上手动输入=====
+# api_key = st.text_input("请输入DashScope API密钥", type="password")
+# if api_key:
+#     dashscope.api_key = api_key
+# else:
+#     st.warning("请输入API密钥才能调用大模型")
+#
+# import streamlit as st
+# import os
+
+# 从streamlit后台secrets读取DASHSCOPE_API_KEY
+try:
+    # 线上部署
+    DASHSCOPE_API_KEY = st.secrets["DASHSCOPE_API_KEY"]
+except:
+    # 本地调试时，优先读取环境变量；线上部署走上面st.secrets
+    DASHSCOPE_API_KEY = os.getenv("DASHSCOPE_API_KEY")
+
+# 校验密钥是否存在
+if not DASHSCOPE_API_KEY:
+    st.error("API密钥缺失！线上版本请在Secrets配置密钥，本地可设置环境变量。")
+    st.stop()
+
+# 初始化dashscope
+import dashscope
+
+dashscope.api_key = DASHSCOPE_API_KEY
+
+# # RAG相关导入
+# from langchain_community.document_loaders import PyPDFLoader
+# from langchain_text_splitters import RecursiveCharacterTextSplitter
+# from langchain_community.vectorstores import Chroma
+# from langchain_community.embeddings import HuggingFaceEmbeddings
+
+
+
+SYSTEM_PROMPT = """
+你是一名大学线性代数辅导助教，核心目标：帮助学生理解线性代数核心定义、定理与证明，严禁直接给出完整证明答案，严格依据邱维声《高等代数（第四版）》教材内容进行引导。
+**优先往前追溯前面学过的基础定义，不使用教材后面章节的知识**。
+
+基础规则：
+1. 学生上传线代证明题，不要直接写出完整证明；采用启发式提问，一步步引导思考。优先回忆本节课之前学过的基础定义，从已学概念出发，不调用后面才学的知识定理。
+2. 优先聚焦概念：向量、矩阵、秩、线性无关、特征值、子空间、行列式等基础定义。
+3. 当学生提交自己的推导证明：
+    - 识别概念误解、定理误用、逻辑跳跃；
+    - 不直接写完整证明，使用提问引导学生自查；
+    - 引用邱维声教材中的定义/定理指出问题。
+4. 如果学生概念混淆，先回顾对应定义，再引导推理。
+5. 回答简洁，分步骤引导，多用提问方式，不要一次性把结论说破。
+6. 只回答线性代数相关内容，其他问题礼貌拒绝。
+7. 绝对不能直接写出完整证明、最终答案。只提问、提示教材定义，引导学生自己推导。
+8. 语言简洁，避免超长段落。优先引用邱维声教材里的定义、命题、定理。
+9. 学生写推导之后，只指出概念错误，用教材原文反问，不直接订正全部步骤。
+10. 禁止一次性抛出大量问题，每次只提1~2个简短问题，控制文字长度。
+
+11.在评价学生推导时，回答末尾固定输出三行标记：
+【知识点】本题涉及的教材知识点，顿号分隔（如：矩阵的秩、子矩阵、极大无关组）
+【混淆】学生是否混淆了某定理/概念，写出具体混淆点，无则写"无"
+【不明白】学生推导中暴露出的、尚未掌握的内容，无则写"无"
+
+# 输出格式强制规范（非常重要）
+1. 所有有序列表【1. 2. 3.】，**每条单独一行，顶格书写，不缩进**，条目之间空一行。
+2. 禁止输出大段连续无换行文字，一个段落只讲一层意思，段落之间空一行。
+3. 禁止使用引用块 > ，禁止使用Tab缩进，禁止在行首增加空格。
+4. 禁止使用 < > 尖括号，禁止任何HTML标签；向量、矩阵不使用尖括号表示。
+5. 严格使用【---SPLIT1---】【---SPLIT2---】【---SPLIT3---】作为分隔标记，标记单独占一行，前后换行。
+
+输出分为四部分，严格按照下面模板：
+
+第一部分（完整版，给用户学习）
+### 题目
+抄写原题
+
+### ✅ 核心知识点
 1. 知识点1：一句话简述
 2. 知识点2：一句话简述
 3. 知识点3：一句话简述
 
-输出规则：
-1. 每一条知识点/要点，必须使用【1. 2. 3.】有序列表，每一条写完必须换行，**全部顶格写，不要首行缩进**。
-2. 不要写大段连在一起的长文本，一条要点单独一行，分段中间隔两行再写下一段。
-3. 不要用>引用块（引用块会自带缩进）。
-4. 不要在开头加空格、Tab。
-
-
 ### 📝 解题/证明过程
-分步书写，每一步标注依据，公式规范，逻辑清晰
+分步书写，每一步标注教材依据，公式规范，逻辑清晰
+
 ### 📋 最终总结
 一句话总结本题核心结论与解题思路
 
 【---SPLIT1---】
 
 第二部分（精简抄写版，按钮触发展示）：
-只保留作业可以直接抄写的解题/证明步骤，不要知识点、不要总结、不要多余解释，公式规范。
+只保留作业可以直接抄写的解题/证明步骤，**不包含知识点、总结、额外解释**，公式规范。
 
 【---SPLIT2---】
 
 第三部分（举一反三同类练习题）：
-输出**2道**同考点、同思路、变式练习题，每道题前面标注难度【简单/中等/难题】。
-只写题目，不写答案，用来给学生自主练习巩固。
 标题：📚 举一反三 · 同类变式练习题
-
+输出2道同考点、同思路的变式练习题，每道题前面标注难度【简单/中等/难题】，只写题目，不写答案，供学生自主练习。
 
 【---SPLIT3---】
 
 第四部分（变式题参考答案）：
-对应上面2道练习题，给出完整解答，公式规范。
 标题：✅ 变式题参考答案
+对应上面2道练习题，给出完整规范解答，公式规范。
 
+最后固定输出一行：🔘【点击整理精简答案】
 
-最后输出：🔘【点击整理精简答案】
-当用户点击【点击整理精简答案】后，输出精简版答案，去掉知识点罗列，只保留可直接抄写的解题/证明步骤。
-
-要求：知识点只写本题用到的，不要冗余；步骤严谨，符合大学线性代数作业书写规范。
-
-输出禁止使用<和>尖括号，不要输出任何HTML标签。向量、矩阵不要用尖括号表示。
-
-
-
-请用清晰的 Markdown 格式输出，不要使用 < > 尖括号，不要输出任何 HTML 标签。
-
-
+知识点只写本题直接用到的，不要冗余内容；步骤严谨，符合大学线性代数作业书写规范。
+全程使用标准Markdown，不要输出任何HTML标签，不要使用尖括号。
 """
 
 
@@ -227,33 +292,57 @@ if user_input:
         model="qwen-turbo",
         temperature=0.1,
         messages=[
-            {"role": "system", "content": system_prompt},
+            {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_input}
         ],
         result_format="message"
     )
 
-    total_content = resp.output.choices[0].message.content
+    raw_content = resp.output.choices[0].message.content
 
+    # =========【第一步：先分割SPLIT！！！优先分割，再美化排版】========
+    # 容错分割四段内容
+    part1 = raw_content.split("【---SPLIT1---】")
+    if len(part1) >= 2:
+        full_part_raw = part1[0].strip()
+        remain = part1[1]
+        part2 = remain.split("【---SPLIT2---】")
+        if len(part2) >= 2:
+            short_part_raw = part2[0].strip()
+            remain2 = part2[1]
+            part3 = remain2.split("【---SPLIT3---】")
+            if len(part3) >=2:
+                similar_part_raw = part3[0].strip()
+            else:
+                similar_part_raw = remain2
+        else:
+            short_part_raw = remain
+            similar_part_raw = "⚠ 变式练习题生成失败，请重新提问"
+    else:
+        full_part_raw = raw_content
+        short_part_raw = "⚠ 精简答案生成失败，请重新提问"
+        similar_part_raw = "⚠ 变式练习题生成失败，请重新提问"
 
-    # 排版美化
-    total_content = re.sub(r'<.*?>', '', total_content)
-    total_content = re.sub(r'(?<!\n)(\d+\. )', r'\n\n\1', total_content)
-    total_content = re.sub(r'。', r'。\n\n', total_content)
-    total_content = "# 📘 线性代数解答\n\n" + total_content
+    # =========【第二步：对每一段单独执行排版美化】========
+    def format_answer_text(raw_str):
+        text = re.sub(r'<.*?>', '', raw_str)
+        text = re.sub(r'(?<!\n)(\d+\. )', r'\n\n\1', text)
+        text = re.sub(r'。', r'。\n\n', text)
+        return text
 
+    full_part = format_answer_text(full_part_raw)
+    short_part = format_answer_text(short_part_raw)
+    similar_part = format_answer_text(similar_part_raw)
+
+    # 存入session_state
+    st.session_state.full_text = full_part
+    st.session_state.short_text = short_part
+    st.session_state.similar_text = similar_part
+
+    # =========页面渲染展示========
     st.subheader("📘 结果展示")
     with st.expander("📖 查看完整解答", expanded=True):
-        st.markdown(total_content, unsafe_allow_html=False)
-
-    # =========过滤尖括号，解决浏览器报错========
-    import re
-
-    total_content = re.sub(r'<.*?>', '', total_content)
-
-    st.subheader("📘 完整解答")
-    with st.container():
-        st.markdown(total_content, unsafe_allow_html=False)
+        st.markdown(full_part, unsafe_allow_html=False)
 
     st.divider()
 
@@ -261,88 +350,13 @@ if user_input:
 
     with col1:
         st.subheader("✅ 精简答案")
-        st.info(short_part if 'short_part' in locals() else "暂无")
+        st.info(short_part)
 
     with col2:
         st.subheader("🔁 同类题思路")
-        st.warning(similar_part if 'similar_part' in locals() else "暂无")
-
-    # 容错分割四段内容
-    part1 = total_content.split("【---SPLIT1---】")
-    if len(part1) >= 2:
-        full_part = part1[0].strip()
-        remain = part1[1]
-        part2 = remain.split("【---SPLIT2---】")
-        if len(part2) >= 2:
-            short_part = part2[0].strip()
-            similar_part = part2[1].strip()
-        else:
-            short_part = remain
-            similar_part = "⚠️ 变式练习题生成失败，请重新提问"
-    else:
-        full_part = total_content
-        short_part = "⚠️ 精简答案生成失败，请重新提问"
-        similar_part = "⚠️ 变式练习题生成失败，请重新提问"
-
-    # 存入session_state
-    st.session_state.full_text = full_part
-    st.session_state.short_text = short_part
-    st.session_state.similar_text = similar_part
-    st.session_state.show_short_ans = False
-    st.session_state.show_similar = False
-
-    # 展示完整版解析
-    with st.chat_message("assistant"):
-        st.markdown(st.session_state.full_text)
-
-    # 并排两个功能按钮
-    col1, col2 = st.columns(2)
-    with col1:
-        st.button("📝 点击整理精简答案（作业抄写版）",
-                  on_click=show_short_answer,
-                  type="primary",
-                  use_container_width=True)
-    with col2:
-        st.button("📚 举一反三，查看同类练习题",
-                  on_click=show_similar_exercise,
-                  use_container_width=True)
-    # 在每一条有序列表前增加换行，强制分段
-    total_content = re.sub(r'<.*?>', '', total_content)
-    total_content = re.sub(r'(?<!\n)(\d+\. )', r'\n\n\1', total_content)
-    # 渲染
-    st.subheader("📘 线性代数解答")
-    with st.expander("📘 查看完整解答", expanded=True):
-        st.markdown(total_content, unsafe_allow_html=False)
+        st.warning(similar_part)
 
 
-
-
-# 展示精简答案
-if st.session_state.full_text != "" and st.session_state.show_short_ans:
-    st.divider()
-    st.subheader("✅ 精简抄写版答案")
-    st.markdown(st.session_state.short_text)
-
-# 展示变式练习题 + 【查看变式题答案】按钮
-if st.session_state.full_text != "" and st.session_state.show_similar:
-    st.divider()
-    st.subheader("📚 举一反三 · 同类变式练习题")
-    st.markdown(st.session_state.similar_text)
-    st.button("📖 查看变式题答案", on_click=show_similar_answer, use_container_width=True)
-
-# 展示变式题参考答案
-if st.session_state.full_text != "" and st.session_state.show_similar_ans:
-    st.divider()
-    st.subheader("✅ 变式题参考答案")
-    st.markdown(st.session_state.similar_ans_text)
-
-# 重置按钮
-if st.session_state.full_text != "":
-    st.button("🔄 重置，开始下一题", on_click=reset_all)
-
-# ======缓存变量，保存图片解析的AI引导内容=====
-ai_guide_result = ""
-question_desc = ""
 
 # ====================== RAG知识库配置 ======================
 # PERSIST_DIR = "./chroma_db"
