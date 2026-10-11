@@ -1,11 +1,9 @@
 import sys
 sys.stdout.reconfigure(encoding="utf-8")
 sys.stdin.reconfigure(encoding="utf-8")
-
 # import os
 # #使用国内镜像
 # os.environ["HF_ENDPOINT"]="https://hf-mirror.com"
-
 import os
 import re
 import io
@@ -19,14 +17,12 @@ import streamlit as st
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
-
 # =====【文本自动分段美化函数｜兼容LaTeX公式】=====
 def format_answer_text(raw_str):
     # 清除多余html标签
     text = re.sub(r'<.*?>', '', raw_str)
     text = re.sub(r'(?<!\n)(\d+\. )', r'\n\n\1', text)
     return text
-
 # =====================================================
 # 希腊字母自动补LaTeX包裹
 greek_dict = {
@@ -34,7 +30,6 @@ greek_dict = {
     r'rank': r'$\mathrm{rank}$',
     r'mathbb': r'$\mathbb'
 }
-
 # ====重置函数：清空答题状态，保留学情记录====
 def reset_question():
     st.session_state.ai_answer = ""
@@ -43,7 +38,6 @@ def reset_question():
     st.session_state.summary_ans = "" # 清空精简答案
     st.session_state.variant_question = "" #清空变式题
     st.rerun()
-
 # # ====密钥输入框，网页上手动输入=====
 # api_key = st.text_input("请输入DashScope API密钥", type="password")
 # if api_key:
@@ -53,7 +47,6 @@ def reset_question():
 #
 # import streamlit as st
 # import os
-
 # 从streamlit后台secrets读取DASHSCOPE_API_KEY
 try:
     # 线上部署
@@ -61,21 +54,17 @@ try:
 except:
     # 本地调试时，优先读取环境变量；线上部署走上面st.secrets
     DASHSCOPE_API_KEY = os.getenv("DASHSCOPE_API_KEY")
-
 # 校验密钥是否存在
 if not DASHSCOPE_API_KEY:
     st.error("API密钥缺失！线上版本请在Secrets配置密钥，本地可设置环境变量。")
     st.stop()
-
 # 初始化dashscope
 dashscope.api_key = DASHSCOPE_API_KEY
-
 # # RAG相关导入
 # from langchain_community.document_loaders import PyPDFLoader
 # from langchain_text_splitters import RecursiveCharacterTextSplitter
 # from langchain_community.vectorstores import Chroma
 # from langchain_community.embeddings import HuggingFaceEmbeddings
-
 # ====================== 系统提示词 ======================
 SYSTEM_PROMPT = """
 你是一名大学线性代数辅导助教，核心目标：帮助学生理解线性代数核心定义、定理与证明，严禁直接给出完整证明答案,严格依据邱维声《高等代数（第四版）》教材内容进行引导。
@@ -139,7 +128,6 @@ SYSTEM_PROMPT = """
 知识点只写本题直接用到的，不要冗余内容；步骤严谨，符合大学线性代数作业书写规范。
 全程使用标准Markdown，不要输出任何HTML标签，不要使用尖括号。
 """
-
 # ======初始化会话状态=======
 if "ai_answer" not in st.session_state:
     st.session_state.ai_answer = ""
@@ -165,7 +153,6 @@ if "summary_ans" not in st.session_state:
     st.session_state.summary_ans = ""
 if "variant_question" not in st.session_state:
     st.session_state.variant_question = ""
-
 # 回调函数
 def show_short_answer():
     st.session_state.show_short_ans = True
@@ -182,7 +169,6 @@ def reset_all():
     st.session_state.similar_text = ""
     st.session_state.similar_ans_text = ""
     st.rerun()
-
 # ====限制内容宽度 + 修复行高=====
 st.markdown("""
 <style>
@@ -195,9 +181,7 @@ st.markdown("""
     }
 </style>
 """, unsafe_allow_html=True)
-
 EXCEL_FILE = "student_learning_record.xlsx"
-
 def save_learning_record(student_name, student_id, knowledge_points, theorem_confused, unclear_point, answer_status):
     """
     knowledge_points : 本题涉及的知识点列表，如 ["矩阵的秩", "子矩阵", "极大无关组"]
@@ -222,7 +206,6 @@ def save_learning_record(student_name, student_id, knowledge_points, theorem_con
     ws.append(new_row)
     beautify_sheet(ws)
     wb.save(EXCEL_FILE)
-
 # ========美化excel表格函数========
 def beautify_sheet(ws):
     # 表头样式
@@ -253,7 +236,6 @@ def beautify_sheet(ws):
     # 冻结表头（滚动时表头固定）
     ws.freeze_panes = "A2"
     ws.row_dimensions[1].height = 24
-
 def save_study_record(question_desc, student_reason, ai_guide, ai_check):
     save_learning_record(
         student_name="匿名",
@@ -263,7 +245,6 @@ def save_study_record(question_desc, student_reason, ai_guide, ai_check):
         unclear_point="无",
         answer_status="学生作答"
     )
-
 # ========== 处理用户提问 ==========
 # 输入框，把用户输入保存到 user_input 变量
 user_input = st.text_area("请输入你的线代问题：", height=180)
@@ -326,7 +307,6 @@ if user_input:
     with col2:
         st.subheader("🔁 同类题思路")
         st.warning(similar_part)
-
 # ====================== RAG知识库配置 ======================
 # PERSIST_DIR = "./chroma_db"
 # embedding_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
@@ -346,17 +326,14 @@ if user_input:
 #     docs = vector_db.similarity_search(query, k=top_k)
 #     content = "\n".join([doc.page_content for doc in docs])
 #     return content
-
 # =========【提交按钮】=========
 # 初始化默认值，防止提取失败时报错
 ai_knowledge_points = []
 ai_confused_theorem = "无"
 ai_unclear_point = "无"
-
 # ====================== Streamlit页面开始 ======================
 st.set_page_config(page_title="线代启明星", layout="wide")
 st.markdown("<h1 style='color:#1F3864;'>线代启明星｜启真问智大赛</h1>", unsafe_allow_html=True)
-
 # 美化上传框CSS，支持拖拽
 custom_css = """
 <style>
@@ -437,7 +414,6 @@ hr {
 </style>
 """
 st.markdown(custom_css, unsafe_allow_html=True)
-
 # -------- RAG知识库上传区域 --------
 st.subheader("上传线性代数PDF知识库（讲义/定理）")
 pdf_file = st.file_uploader("上传PDF文件", type=["pdf"], key="pdf_upload")
@@ -451,7 +427,6 @@ if pdf_file is not None:
     # vector_db.persist()
     st.success("✅PDF知识库导入完成！已存入向量库")
 st.divider()
-
 # -------- 图片上传与题目AI引导 --------
 st.subheader("上传线性代数证明题图片（可直接拖拽图片到框内）")
 uploaded_file = st.file_uploader(
@@ -459,10 +434,8 @@ uploaded_file = st.file_uploader(
     type=["jpg", "png"],
     key="img_upload"
 )
-
 ai_guide_result = ""
 question_desc = ""
-
 if uploaded_file is not None:
     img = Image.open(uploaded_file)
     # ========== 网页预览用缩小图，不影响AI识别 ==========
@@ -524,7 +497,6 @@ if uploaded_file is not None:
         st.markdown(f"<p style='color:#222222;line-height:1.8;'>{clean_guide}</p >", unsafe_allow_html=True)
         # 截取前80字作为题目简述
         question_desc = ai_guide_result[:80]
-
         # 【新增按钮：整理精简答案 / 生成举一反三变式题】
         col_btn1, col_btn2 = st.columns(2)
         with col_btn1:
@@ -533,7 +505,7 @@ if uploaded_file is not None:
 把下面线性代数启发引导，整理精简推导总结：
 1.保留核心概念关键步骤，删掉反问引导提问。
 2.每条要点单独一段，段落空两行。
-3.数学符号、希腊字母全部LaTeX，$包裹，例$\delta$，$\mathrm{rank}(A)$。
+3.数学符号、希腊字母全部LaTeX，$包裹，例$\delta$，$\mathrm{{rank}}(A)$。
 4.基于邱维声高等代数第四版，不要额外拓展。
 原文：
 {clean_guide}
@@ -561,7 +533,6 @@ if uploaded_file is not None:
                     result_format="message",stream=False
                 )
                 st.session_state.variant_question = resp_variant.output.choices[0].message.content
-
         #渲染精简答案
         if st.session_state.summary_ans != "":
             st.divider()
@@ -572,15 +543,12 @@ if uploaded_file is not None:
             st.divider()
             st.subheader("🔁举一反三变式题")
             st.markdown(st.session_state.variant_question)
-
     else:
         st.error(f"调用失败！{response.message}")
-
 st.divider()
 # # -------- 学生推导输入 & 批改模块 --------
 # st.subheader("✍ 写下你的推导/证明思路")
 # student_reason = st.text_area("把你的思考过程写在这里，AI结合知识库帮你检查概念错误", height=150, key="student_text")
-
 # ===== 学生推导过程上传模块 =====
 st.subheader("✍️ 你的推导过程")
 tab1, tab2 = st.tabs(["📝 文字输入推导", "🖼️ 上传手写照片"])
@@ -612,7 +580,6 @@ with tab1:
             feedback = resp.output.choices[0].message.content
         st.markdown("### 📋 AI反馈")
         st.markdown(feedback)
-
 with tab2:
     # 图片上传，用于手写推导照片
     upload_img = st.file_uploader("上传手写推导图片（jpg/png）", type=["jpg","png"], key="student_img")
@@ -638,11 +605,9 @@ with tab2:
                 feedback_img = resp.output.choices[0].message.content[0]["text"]
             st.markdown("### 📋 AI反馈")
             st.markdown(feedback_img)
-
 # 重置按钮（清空学生推导，保留题目）
 if st.button("清空我的推导", on_click=reset_question):
     st.success("已清空推导内容，可以重新作答")
-
 # 这一段代码保留原样，注释状态，未启用
 # check_btn = st.button(" 检查我的推导（检索知识库）")
 # if check_btn and student_reason.strip() != "":
@@ -687,7 +652,6 @@ if st.button("清空我的推导", on_click=reset_question):
 #         st.success("✅手动保存成功")
 #     else:
 #         st.warning("请先上传题目或者填写推导内容")
-
 st.divider()
 # ====重置、下一题按钮放在整个页面最底部====
 col_bottom1, col_bottom2 = st.columns(2)
@@ -697,7 +661,6 @@ with col_bottom2:
     if st.button("➡️ 下一题"):
         reset_question()
         st.success("准备好接收下一题，请上传新题目图片")
-
 # ========== 教师学情查看面板 ==========
 st.divider()
 st.subheader(" 教师学情查看面板")
