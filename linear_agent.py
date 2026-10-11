@@ -37,6 +37,9 @@ def reset_question():
     st.session_state.question = ""  # 清空题目
     st.session_state.summary_ans = "" # 清空精简答案
     st.session_state.variant_question = "" #清空变式题
+# 删除图片上传组件的session
+    if "student_img" in st.session_state:
+        del st.session_state["student_img"]
     st.rerun()
 # # ====密钥输入框，网页上手动输入=====
 # api_key = st.text_input("请输入DashScope API密钥", type="password")
@@ -582,10 +585,15 @@ with tab1:
         st.markdown(feedback)
 with tab2:
     # 图片上传，用于手写推导照片
-    upload_img = st.file_uploader("上传手写推导图片（jpg/png）", type=["jpg","png"], key="student_img")
+    upload_img = st.file_uploader("上传手写推导图片（jpg/png）", type=["jpg","png","jpeg"], key="student_img")
     if upload_img is not None:
+        # 转base64（dashscope多模态标准写法，不要加data前缀！！）
         img = Image.open(upload_img)
         st.image(img, caption="你的手写推导", use_column_width=True)
+
+        img_bytes = upload_img.read()
+        base64_str = base64.b64encode(img_bytes).decode("utf-8")
+
         if st.button("提交图片，AI识别批改", key="submit_img"):
             # 多模态调用qwen3-vl-plus识别手写推导
             with st.spinner("识别手写推导并批改..."):
@@ -596,8 +604,8 @@ with tab2:
                         {
                             "role":"user",
                             "content":[
-                                {"type":"image","image":upload_img},
-                                {"type":"text","text":"对比推导，找出概念错误，启发式引导，不直接写完整答案，全部数学符号使用LaTeX $ $"}
+                                {"type":"image", "image": base64_str},
+                                {"type":"text", "text":"对比推导，找出概念错误，启发式引导，不直接写完整答案，全部数学符号使用LaTeX $ $，输出时每一条要点单独分段，段落之间空两行"}
                             ]
                         }
                     ]
