@@ -592,18 +592,20 @@ with tab2:
 
         img_bytes = upload_img.read()
         base64_str = base64.b64encode(img_bytes).decode("utf-8")
+        # ✅ 关键：加上data:image/jpeg;base64, 前缀！
+        img_data_url = f"data:image/jpeg;base64,{base64_str}"
 
         if st.button("提交图片，AI识别批改", key="submit_img"):
             with st.spinner("识别手写推导并批改..."):
                 try:
                     resp = dashscope.MultiModalConversation.call(
-                        model="qwen3-vl-flash", # ✅正确可用模型
+                        model="qwen3-vl-plus", # 换回你原本可用的模型！
                         messages=[
                             {"role":"system","content":SYSTEM_PROMPT},
                             {
                                 "role":"user",
                                 "content":[
-                                    {"type":"image", "image": base64_str},
+                                    {"type":"image", "image": img_data_url}, # 带data前缀！！
                                     {"type":"text", "text":"对比推导，找出概念错误，启发式引导，不直接写完整答案，全部数学符号使用LaTeX $ $，输出时每一条要点单独分段，段落之间空两行"}
                                 ]
                             }
@@ -629,6 +631,7 @@ with tab2:
     # 重置按钮
     if st.button("清空我的推导", on_click=reset_question):
         st.success("已清空推导内容，可以重新作答")
+
 
 
 
