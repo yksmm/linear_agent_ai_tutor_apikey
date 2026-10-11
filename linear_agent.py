@@ -597,26 +597,45 @@ with tab2:
         if st.button("提交图片，AI识别批改", key="submit_img"):
             # 多模态调用qwen3-vl-plus识别手写推导
             with st.spinner("识别手写推导并批改..."):
-                resp = dashscope.MultiModalConversation.call(
-                    model="qwen3-vl-plus",
-                    messages=[
-                        {"role":"system","content":SYSTEM_PROMPT},
-                        {
-                            "role":"user",
-                            "content":[
-                                {"type":"image", "image": base64_str},
-                                {"type":"text", "text":"对比推导，找出概念错误，启发式引导，不直接写完整答案，全部数学符号使用LaTeX $ $，输出时每一条要点单独分段，段落之间空两行"}
-                            ]
-                        }
-                    ]
-                )
-                feedback_img = resp.output.choices[0].message.content[0]["text"]
-            st.markdown("### 📋 AI反馈")
-            st.markdown(feedback_img)
-# 重置按钮（清空学生推导，保留题目）
-if st.button("清空我的推导", on_click=reset_question):
-    st.success("已清空推导内容，可以重新作答")
-# 这一段代码保留原样，注释状态，未启用
+                try:
+                    resp = dashscope.MultiModalConversation.call(
+                        model="qwen3-vl-plus",
+                        messages=[
+                            {"role":"system","content":SYSTEM_PROMPT},
+                            {
+                                "role":"user",
+                                "content":[
+                                    {"type":"image", "image": base64_str},
+                                    {"type":"text", "text":"对比推导，找出概念错误，启发式引导，不直接写完整答案，全部数学符号使用LaTeX $ $，输出时每一条要点单独分段，段落之间空两行"}
+                                ]
+                            }
+                        ]
+                    )
+                    # ===== 核心修复：兼容两种返回格式 =====
+                    content_raw = resp.output.choices[0].message.content
+                    if isinstance(content_raw, list):
+                        feedback_img = content_raw[0]["text"]
+                    else:
+                        feedback_img = content_raw
+
+                    # ==========排版美化【重点】==========
+                    # 1.去除html标签，防止尖括号报错
+                    feedback_img = re.sub(r'<.*?>', '', feedback_img)
+                    # 2. 给编号条目前面加换行，每条之间空两行
+                    feedback_img = re.sub(r'(?<!\n)(\d+\. )', r'\n\n\1', feedback_img)
+
+                    st.markdown("### 📝 AI反馈")
+                    st.markdown(feedback_img)
+                except Exception as e:
+                    st.error(f"调用出错：{e}")
+                    st.write(resp) # 调试打印返回内容，方便排查
+
+    # 重置按钮（清空学生推导，保留题目）
+    if st.button("清空我的推导", on_click=reset_question):
+        st.success("已清空推导内容，可以重新作答")
+
+
+# 后续升级
 # check_btn = st.button(" 检查我的推导（检索知识库）")
 # if check_btn and student_reason.strip() != "":
 #     # rag_student_context = search_knowledge(student_reason)
