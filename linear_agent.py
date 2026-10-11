@@ -1,3 +1,4 @@
+from openai import OpenAI
 import sys
 sys.stdout.reconfigure(encoding="utf-8")
 sys.stdin.reconfigure(encoding="utf-8")
@@ -592,34 +593,39 @@ with tab2:
 
         img_bytes = upload_img.read()
         base64_str = base64.b64encode(img_bytes).decode("utf-8")
-        # ✅ 关键：加上data:image/jpeg;base64, 前缀！
         img_data_url = f"data:image/jpeg;base64,{base64_str}"
 
         if st.button("提交图片，AI识别批改", key="submit_img"):
             with st.spinner("识别手写推导并批改..."):
                 try:
-                    resp = dashscope.MultiModalConversation.call(
-                        model="qwen3-vl-plus", # 换回你原本可用的模型！
+                    # 初始化兼容模式客户端
+                    client = OpenAI(
+                        api_key = st.secrets["DASHSCOPE_API_KEY"],
+                        base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+                    )
+                    resp = client.chat.completions.create(
+                        model="qwen-vl-plus",
                         messages=[
-                            {"role":"system","content":SYSTEM_PROMPT},
+                            {"role":"system", "content":SYSTEM_PROMPT},
                             {
                                 "role":"user",
-                                "content":[
-                                    {"type":"image", "image": img_data_url}, # 带data前缀！！
-                                    {"type":"text", "text":"对比推导，找出概念错误，启发式引导，不直接写完整答案，全部数学符号使用LaTeX $ $，输出时每一条要点单独分段，段落之间空两行"}
+                                "content": [
+                                    {
+                                        "type": "image_url",
+                                        "image_url": {"url": img_data_url}
+                                    },
+                                    {"type": "text", "text":"对比推导，找出概念错误，启发式引导，不直接写完整答案，全部数学符号使用LaTeX $ $，输出时每一条要点单独分段，段落之间空两行"}
                                 ]
                             }
-                        ]
+                        ],
+                        temperature=0.1
                     )
-                    # 兼容两种返回格式
-                    content_raw = resp.output.choices[0].message.content
-                    if isinstance(content_raw, list):
-                        feedback_img = content_raw[0]["text"]
-                    else:
-                        feedback_img = content_raw
+                    feedback_img = resp.choices[0].message.content
 
-                    # 排版美化
+                    # ==========排版美化【保留你要的分段效果】==========
+                    # 清除html标签，防止尖括号报错
                     feedback_img = re.sub(r'<.*?>', '', feedback_img)
+                    # 编号条目前面增加换行，每条之间空两行
                     feedback_img = re.sub(r'(?<!\n)(\d+\. )', r'\n\n\1', feedback_img)
 
                     st.markdown("### 📝 AI反馈")
@@ -631,6 +637,7 @@ with tab2:
     # 重置按钮
     if st.button("清空我的推导", on_click=reset_question):
         st.success("已清空推导内容，可以重新作答")
+
 
 
 
