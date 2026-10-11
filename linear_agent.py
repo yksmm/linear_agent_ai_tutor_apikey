@@ -585,58 +585,76 @@ with tab1:
         st.markdown("### 📋 AI反馈")
         st.markdown(feedback)
 with tab2:
-    # 图片上传，用于手写推导照片
-    upload_img = st.file_uploader("上传手写推导图片（jpg/png）", type=["jpg","png","jpeg"], key="student_img")
+    st.subheader("📷 上传手写推导，AI直接识别图片批改")
+    upload_img = st.file_uploader("上传手写推导图片（jpg/png，小于7MB）", type=["jpg","png","jpeg"], key="student_img")
+
     if upload_img is not None:
-        img = Image.open(upload_img)
-        st.image(img, caption="你的手写推导", use_column_width=True)
+        # 读取图片二进制（getvalue只读取一次，不会清空流）
+        img_bytes_raw = upload_img.getvalue()
+        # 校验图片字节是否为空
+        if not img_bytes_raw:
+            st.warning("图片读取失败，图片数据为空，请重新上传！")
+        else:
+            # 图片压缩，统一转JPG，减小体积，规避大图片base64超长报错
+            img = Image.open(upload_img)
+            # 统一转RGB（png透明通道会报错）
+            img = img.convert("RGB")
+            max_width = 1200
+            if img.width > max_width:
+                ratio = max_width / img.width
+                img = img.resize((int(img.width*ratio), int(img.height*ratio)))
+            # 压缩到内存字节流
+            buffer = io.BytesIO()
+            img.save(buffer, format="JPEG", quality=80)
+            compressed_bytes = buffer.getvalue()
+            buffer.close()
 
-        img_bytes = upload_img.read()
-        base64_str = base64.b64encode(img_bytes).decode("utf-8")
-        img_data_url = f"data:image/jpeg;base64,{base64_str}"
+            # base64编码
+            base64_str = base64.b64encode(compressed_bytes).decode("utf-8")
+            img_data_url = f"data:image/jpeg;base64,{base64_str}"
 
-        if st.button("提交图片，AI识别批改", key="submit_img"):
-            with st.spinner("识别手写推导并批改..."):
-                try:
-                    # 初始化兼容模式客户端
-                    client = OpenAI(
-                        api_key = st.secrets["DASHSCOPE_API_KEY"],
-                        base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-                    )
-                    resp = client.chat.completions.create(
-                        model="qwen-vl-plus",
-                        messages=[
-                            {"role":"system", "content":SYSTEM_PROMPT},
-                            {
-                                "role":"user",
-                                "content": [
-                                    {
-                                        "type": "image_url",
-                                        "image_url": {"url": img_data_url}
-                                    },
-                                    {"type": "text", "text":"对比推导，找出概念错误，启发式引导，不直接写完整答案，全部数学符号使用LaTeX $ $，输出时每一条要点单独分段，段落之间空两行"}
-                                ]
-                            }
-                        ],
-                        temperature=0.1
-                    )
-                    feedback_img = resp.choices[0].message.content
+            # 页面预览图片
+            st.image(img, caption="预览你的手写推导", use_column_width=True)
 
-                    # ==========排版美化【保留你要的分段效果】==========
-                    # 清除html标签，防止尖括号报错
-                    feedback_img = re.sub(r'<.*?>', '', feedback_img)
-                    # 编号条目前面增加换行，每条之间空两行
-                    feedback_img = re.sub(r'(?<!\n)(\d+\. )', r'\n\n\1', feedback_img)
+            if st.button("提交图片，AI启发式批改", key="submit_img_btn"):
+                with st.spinner("正在识别手写推导并分析..."):
+                    try:
+                        from openai import OpenAI
+                        client = OpenAI(
+                            api_key = st.secrets["DASHSCOPE_API_KEY"],
+                            base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+                        )
+                        resp = client.chat.completions.create(
+                            model="qwen-vl-plus",
+                            messages=[
+                                {"role":"system", "content":SYSTEM_PROMPT},
+                                {
+                                    "role":"user",
+                                    "content": [
+                                        {
+                                            "type": "image_url",
+                                            "image_url": {"url": img_data_url}
+                                        },
+                                        {"type": "text", "text":"识别图片内的线性代数手写推导。找出概念错误，启发式引导，严禁直接给出完整证明。数学公式使用$ $包裹LaTeX。输出每一条要点单独分段，要点之间空两行。"}
+                                    ]
+                                }
+                            ],
+                            temperature=0.1
+                        )
+                        feedback_img = resp.choices[0].message.content
+                        # 排版美化
+                        feedback_img = re.sub(r'<.*?>', '', feedback_img)
+                        feedback_img = re.sub(r'(?<!\n)(\d+\. )', r'\n\n\1', feedback_img)
 
-                    st.markdown("### 📝 AI反馈")
-                    st.markdown(feedback_img)
-                except Exception as e:
-                    st.error(f"调用出错：{e}")
-                    st.write(resp)
+                        st.markdown("### 📝 AI反馈")
+                        st.markdown(feedback_img)
+                    except Exception as e:
+                        st.error(f"调用出错：{e}")
 
     # 重置按钮
     if st.button("清空我的推导", on_click=reset_question):
-        st.success("已清空推导内容，可以重新作答")
+        st.success("已清空")
+
 
 
 
