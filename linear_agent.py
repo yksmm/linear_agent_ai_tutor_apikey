@@ -587,52 +587,52 @@ with tab2:
     # 图片上传，用于手写推导照片
     upload_img = st.file_uploader("上传手写推导图片（jpg/png）", type=["jpg","png","jpeg"], key="student_img")
     if upload_img is not None:
-        # 转base64（dashscope多模态标准写法，不要加data前缀！！）
         img = Image.open(upload_img)
         st.image(img, caption="你的手写推导", use_column_width=True)
 
+        # 读取图片二进制，编码base64
         img_bytes = upload_img.read()
         base64_str = base64.b64encode(img_bytes).decode("utf-8")
 
         if st.button("提交图片，AI识别批改", key="submit_img"):
-            # 多模态调用qwen3-vl-plus识别手写推导
             with st.spinner("识别手写推导并批改..."):
                 try:
-                    resp = dashscope.MultiModalConversation.call(
-                        model="qwen3-vl-plus",
+                    # ==========核心改动：切换为Generation接口 + qwen3-vl==========
+                    resp = dashscope.Generation.call(
+                        model="qwen3-vl",
                         messages=[
-                            {"role":"system","content":SYSTEM_PROMPT},
+                            {"role":"system", "content":SYSTEM_PROMPT},
                             {
                                 "role":"user",
-                                "content":[
-                                    {"type":"image", "image": base64_str},
-                                    {"type":"text", "text":"对比推导，找出概念错误，启发式引导，不直接写完整答案，全部数学符号使用LaTeX $ $，输出时每一条要点单独分段，段落之间空两行"}
+                                "content": [
+                                    # Generation接口必须用 image_url + data base64前缀
+                                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_str}"}},
+                                    {"type": "text", "text": "对比推导，找出概念错误，启发式引导，不直接写完整答案，全部数学符号使用LaTeX $ $，输出时每一条要点单独分段，段落之间空两行"}
                                 ]
                             }
-                        ]
+                        ],
+                        result_format="message",
+                        temperature=0.1
                     )
-                    # ===== 核心修复：兼容两种返回格式 =====
-                    content_raw = resp.output.choices[0].message.content
-                    if isinstance(content_raw, list):
-                        feedback_img = content_raw[0]["text"]
-                    else:
-                        feedback_img = content_raw
+                    # 读取返回文本，qwen3-vl返回直接是字符串，不用判断列表
+                    feedback_img = resp.output.choices[0].message.content
 
-                    # ==========排版美化【重点】==========
-                    # 1.去除html标签，防止尖括号报错
+                    # ==========排版美化【保留你要的分段效果】==========
+                    # 清除html标签，防止尖括号报错
                     feedback_img = re.sub(r'<.*?>', '', feedback_img)
-                    # 2. 给编号条目前面加换行，每条之间空两行
+                    # 编号条目自动增加换行，每条之间空两行
                     feedback_img = re.sub(r'(?<!\n)(\d+\. )', r'\n\n\1', feedback_img)
 
                     st.markdown("### 📝 AI反馈")
                     st.markdown(feedback_img)
                 except Exception as e:
                     st.error(f"调用出错：{e}")
-                    st.write(resp) # 调试打印返回内容，方便排查
+                    st.write(resp) # 打印返回原始信息，方便调试
 
     # 重置按钮（清空学生推导，保留题目）
     if st.button("清空我的推导", on_click=reset_question):
         st.success("已清空推导内容，可以重新作答")
+
 
 
 # 后续升级
