@@ -21,3 +21,7 @@
 1. 安装依赖
 ```bash
 pip install -r requirements.txt
+
+##技术栈
+Python、Streamlit、DashScope Qwen大模型、Pillow、re
+

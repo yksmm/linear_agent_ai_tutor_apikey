@@ -18,6 +18,7 @@ import dashscope
 from dashscope import MultiModalConversation
 import streamlit as st
 
+
 # =====【文本自动分段美化函数｜兼容LaTeX公式】=====
 def format_answer_text(raw_str):
     # 清除多余html标签
@@ -29,11 +30,12 @@ def format_answer_text(raw_str):
     return text
 # =====================================================
 
-# 重置函数：清空答题状态，保留学情记录
+
+# ====重置函数：清空答题状态，保留学情记录====
 def reset_question():
     st.session_state.ai_answer = ""
     st.session_state.student_input = ""
-    st.rerun()  # 刷新整个页面
+    st.session_state.question = ""  # 新增：清空题目！
 
 
 # # ====密钥输入框，网页上手动输入=====
@@ -78,8 +80,8 @@ SYSTEM_PROMPT = """
 强制排版约束：
 1. 所有数学符号、希腊字母必须使用LaTeX公式，单行公式用 $ $ 包裹。
 例：$\delta_1,\delta_2$，$\eta_1$，$\mathrm{rank}(A)$，不要写delta、eta、operatorname纯文本。
-2. 文字必须简短，一句话控制在2行以内，杜绝超长段落。
-3. 有序列表1.2.3. 每条必须单独一行，不要把多个知识点挤在同一段落，不同知识点一定要换行写。
+2. 文字尽量简短，一句话控制在2行以内，杜绝超长段落。
+3. 有序列表1.2.3. 每条单独一行，不要把多个知识点挤在同一段落。
 4. 不要堆砌多余解释，定义、定理只写核心内容。
 5. 禁止无换行的大段长文本，知识点逐条分开。
 
@@ -112,8 +114,6 @@ SYSTEM_PROMPT = """
 ### 题目
 抄写原题
 ### ✅ 核心知识点（整齐罗列，每条简短）
-
-
 """
 
 # ======初始化会话状态=======
@@ -136,6 +136,15 @@ if "similar_text" not in st.session_state:
     st.session_state.similar_text = ""
 if "similar_ans_text" not in st.session_state:
     st.session_state.similar_ans_text = ""
+#
+if "ai_answer" not in st.session_state:
+    st.session_state.ai_answer = ""
+if "student_input" not in st.session_state:
+    st.session_state.student_input = ""
+if "question" not in st.session_state:
+    st.session_state.question = ""
+
+
 
 
 # 回调函数
@@ -160,6 +169,8 @@ def reset_all():
     st.session_state.similar_text = ""
     st.session_state.similar_ans_text = ""
     st.rerun()
+
+
 
 
 # ====限制内容宽度 + 修复行高，解决文字挤在一起=====
@@ -224,6 +235,14 @@ dashscope.api_key = DASHSCOPE_API_KEY
 SYSTEM_PROMPT = """
 你是一名大学线性代数辅导助教，核心目标：帮助学生理解线性代数核心定义、定理与证明，严禁直接给出完整证明答案，严格依据邱维声《高等代数（第四版）》教材内容进行引导。
 **优先往前追溯前面学过的基础定义，不使用教材后面章节的知识**。
+
+强制排版约束：
+1. 所有数学符号、希腊字母必须使用LaTeX公式，单行公式用 $ $ 包裹。
+例：$\delta_1,\delta_2$，$\eta_1$，$\mathrm{rank}(A)$，不要写delta、eta、operatorname纯文本。
+2. 文字尽量简短，一句话控制在2行以内，杜绝超长段落。
+3. 有序列表1.2.3. 每条单独一行，不要把多个知识点挤在同一段落,不同知识点一定要换行写。
+4. 不要堆砌多余解释，定义、定理只写核心内容。
+5. 禁止无换行的大段长文本，知识点逐条分开。
 
 基础规则：
 1. 学生上传线代证明题，不要直接写出完整证明；采用启发式提问，一步步引导思考。优先回忆本节课之前学过的基础定义，从已学概念出发，不调用后面才学的知识定理。
@@ -512,14 +531,7 @@ import streamlit as st
 st.set_page_config(page_title="线代启明星", layout="wide")
 st.markdown("<h1 style='color:#1F3864;'>线代启明星｜启真问智大赛</h1>", unsafe_allow_html=True)
 
-# =============页面最底部下一题按钮============
-st.divider()
-if st.button("下一题（重置答题）"):
-    reset_question()
-    # 清空session，重置页面
-    st.session_state["img_upload"] = None
-    st.session_state["student_input"] = ""
-    st.rerun()
+
 
 # 美化上传框CSS，支持拖拽
 custom_css = """
@@ -614,6 +626,7 @@ hr {
 """
 st.markdown(custom_css, unsafe_allow_html=True)
 
+
 # -------- RAG知识库上传区域 --------
 st.subheader("上传线性代数PDF知识库（讲义/定理）")
 pdf_file = st.file_uploader("上传PDF文件", type=["pdf"], key="pdf_upload")
@@ -697,7 +710,10 @@ if uploaded_file is not None:
             text = re.sub(
                 r"[^\w\s，。！？、；：()（）\-\—\[\]{}<>=≠≤≥±×÷∑∏∫√∂∇∈∉∋∌∩∪⊂⊃⊄⊅⊆⊇⊈⊉⊊⊋⊥∥∠°παβγδεζηθλμνξοπρστυφχψωΑΒΓΔΕΖΗΘΙΚΛΜΝΞΟΠΡΣΤΥΦΧΨΩ]+",
                 "", text)
-           
+            # 合并多余空行
+            text = re.sub(r"\n{2,}", "\n", text)
+            return text.strip()
+
 
         clean_guide = clean_ai_text(ai_guide_result)
         st.markdown(f"<h3 style='color:#1F3864;'>AI题目引导</h3>", unsafe_allow_html=True)
@@ -709,6 +725,9 @@ if uploaded_file is not None:
 
 st.divider()
 
+# # -------- 学生推导输入 & 批改模块 --------
+# st.subheader("✍ 写下你的推导/证明思路")
+# student_reason = st.text_area("把你的思考过程写在这里，AI结合知识库帮你检查概念错误", height=150, key="student_text")
 
 
 # ===== 学生推导过程上传模块 =====
@@ -764,9 +783,11 @@ with tab2:
             st.markdown("### 📋 AI反馈")
             st.markdown(feedback_img)
 
-# ====重置按钮（清空学生推导，保留题目）====
+# 重置按钮（清空学生推导，保留题目）
 if st.button("清空我的推导", on_click=reset_question):
     st.success("已清空推导内容，可以重新作答")
+
+
 
 check_btn = st.button(" 检查我的推导（检索知识库）")
 if check_btn and student_reason.strip() != "":
@@ -815,6 +836,19 @@ if st.button(" 手动保存当前记录（备用）"):
         st.warning("请先上传题目或者填写推导内容")
 
 st.divider()
+
+# ====重置按钮放最底下====
+st.divider()
+col1, col2 = st.columns(2)
+with col1:
+    if st.button("🔄 重置本题", on_click=reset_question):
+        st.success("已清空本题所有内容，可以重新上传题目")
+with col2:
+    if st.button("➡️ 下一题"):
+        reset_question()
+        st.success("准备好接收下一题，请上传新题目图片")
+
+
 
 # ========== 教师学情查看面板 ==========
 st.subheader(" 教师学情查看面板")
