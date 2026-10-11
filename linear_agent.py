@@ -590,46 +590,43 @@ with tab2:
         img = Image.open(upload_img)
         st.image(img, caption="你的手写推导", use_column_width=True)
 
-        # 读取图片二进制，编码base64
         img_bytes = upload_img.read()
         base64_str = base64.b64encode(img_bytes).decode("utf-8")
 
         if st.button("提交图片，AI识别批改", key="submit_img"):
             with st.spinner("识别手写推导并批改..."):
                 try:
-                    # ==========核心改动：切换为Generation接口 + qwen3-vl==========
-                    resp = dashscope.Generation.call(
-                        model="qwen3-vl",
+                    resp = dashscope.MultiModalConversation.call(
+                        model="qwen3-vl-flash", # ✅正确可用模型
                         messages=[
-                            {"role":"system", "content":SYSTEM_PROMPT},
+                            {"role":"system","content":SYSTEM_PROMPT},
                             {
                                 "role":"user",
-                                "content": [
-                                    # Generation接口必须用 image_url + data base64前缀
-                                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_str}"}},
-                                    {"type": "text", "text": "对比推导，找出概念错误，启发式引导，不直接写完整答案，全部数学符号使用LaTeX $ $，输出时每一条要点单独分段，段落之间空两行"}
+                                "content":[
+                                    {"type":"image", "image": base64_str},
+                                    {"type":"text", "text":"对比推导，找出概念错误，启发式引导，不直接写完整答案，全部数学符号使用LaTeX $ $，输出时每一条要点单独分段，段落之间空两行"}
                                 ]
                             }
-                        ],
-                        result_format="message",
-                        temperature=0.1
+                        ]
                     )
-                    # 读取返回文本，qwen3-vl返回直接是字符串，不用判断列表
-                    feedback_img = resp.output.choices[0].message.content
+                    # 兼容两种返回格式
+                    content_raw = resp.output.choices[0].message.content
+                    if isinstance(content_raw, list):
+                        feedback_img = content_raw[0]["text"]
+                    else:
+                        feedback_img = content_raw
 
-                    # ==========排版美化【保留你要的分段效果】==========
-                    # 清除html标签，防止尖括号报错
+                    # 排版美化
                     feedback_img = re.sub(r'<.*?>', '', feedback_img)
-                    # 编号条目自动增加换行，每条之间空两行
                     feedback_img = re.sub(r'(?<!\n)(\d+\. )', r'\n\n\1', feedback_img)
 
                     st.markdown("### 📝 AI反馈")
                     st.markdown(feedback_img)
                 except Exception as e:
                     st.error(f"调用出错：{e}")
-                    st.write(resp) # 打印返回原始信息，方便调试
+                    st.write(resp)
 
-    # 重置按钮（清空学生推导，保留题目）
+    # 重置按钮
     if st.button("清空我的推导", on_click=reset_question):
         st.success("已清空推导内容，可以重新作答")
 
