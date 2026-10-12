@@ -26,13 +26,12 @@ def format_answer_text(raw_str):
     text = re.sub(r'(?<!\n)(\d+\. )', r'\n\n\1', text)
     return text
 
-# ======================【新增：LaTeX符号修复函数，全局调用！】======================
+# ======================【LaTeX符号修复函数｜最终修复版】======================
 def fix_latex_symbols(text: str) -> str:
     """
     修复裸写希腊字母delta/eta/rank等，自动加上$ $，修正mathrm格式
-    解决输出 delta_1 而不是 $\delta_1$ 的渲染bug
+    使用回调函数，规避re.sub替换字符串内反斜杠 bad escape报错
     """
-    # 1.替换希腊字母
     replace_map = [
         ("delta", r"$\delta$"),
         ("eta", r"$\eta$"),
@@ -43,17 +42,20 @@ def fix_latex_symbols(text: str) -> str:
         ("xi", r"$\xi$"),
         ("zeta", r"$\zeta$"),
     ]
-    # 处理带下标，例如 delta_1 → $\delta_1$
-    for plain, latex in replace_map:
-        # 匹配 delta_1 / delta_2
-        pattern = re.compile(rf"{plain}(_\d+)")
-        text = pattern.sub(latex + r"\1", text)
-        # 匹配单独 delta
-        text = re.sub(rf"\b{plain}\b", latex, text)
 
-    # 修复 rank 裸写 → $\mathrm{rank}$
-    text = re.sub(r"\brank\b(?!\$)", r"$\mathrm{rank}$", text)
-    # 修复错误 \mathrm{rank}{A} → \mathrm{rank}(A)
+    for plain, latex_str in replace_map:
+        # 匹配带下标：delta_1
+        pattern_sub = re.compile(rf"{plain}(_\d+)")
+        # 使用lambda回调，返回原始文本，不再走re的repl模板解析！
+        text = pattern_sub.sub(lambda m: latex_str + m.group(1), text)
+
+        # 匹配单独单词 delta
+        pattern_word = re.compile(rf"\b{plain}\b")
+        text = pattern_word.sub(lambda m: latex_str, text)
+
+    # 修复 rank → $\mathrm{rank}$
+    text = re.sub(r"\brank\b(?!\$)", lambda m: r"$\mathrm{rank}$", text)
+    # 修复 \mathrm{rank}{A} → \mathrm{rank}(A)
     text = re.sub(r"\\mathrm\{rank\}\{", r"\\mathrm{rank}(", text)
 
     return text
