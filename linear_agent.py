@@ -34,20 +34,20 @@ def fix_latex_symbols(text: str) -> str:
     """
     # 1.替换希腊字母
     replace_map = [
-        (r"delta", r"$\delta$"),
-        (r"eta", r"$\eta$"),
-        (r"alpha", r"$\alpha$"),
-        (r"beta", r"$\beta$"),
-        (r"gamma", r"$\gamma$"),
-        (r"lambda", r"$\lambda$"),
-        (r"xi", r"$\xi$"),
-        (r"zeta", r"$\zeta$"),
+        ("delta", r"$\delta$"),
+        ("eta", r"$\eta$"),
+        ("alpha", r"$\alpha$"),
+        ("beta", r"$\beta$"),
+        ("gamma", r"$\gamma$"),
+        ("lambda", r"$\lambda$"),
+        ("xi", r"$\xi$"),
+        ("zeta", r"$\zeta$"),
     ]
     # 处理带下标，例如 delta_1 → $\delta_1$
     for plain, latex in replace_map:
         # 匹配 delta_1 / delta_2
         pattern = re.compile(rf"{plain}(_\d+)")
-        text = pattern.sub(rf"{latex}\1", text)
+        text = pattern.sub(latex + r"\1", text)
         # 匹配单独 delta
         text = re.sub(rf"\b{plain}\b", latex, text)
 
@@ -240,6 +240,8 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown("<h1 style='color:#1F3864;'>线代启明星｜启真问智大赛</h1>", unsafe_allow_html=True)
+
+
 
 # 美化上传框CSS，支持拖拽
 custom_css = """
