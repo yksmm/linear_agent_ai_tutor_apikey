@@ -26,6 +26,7 @@ def format_answer_text(raw_str):
     text = re.sub(r'(?<!\n)(\d+\. )', r'\n\n\1', text)
     return text
 # =====================================================
+
 # 希腊字母自动补LaTeX包裹
 greek_dict = {
     r'delta': r'$\delta$',
@@ -51,9 +52,9 @@ def reset_question():
 #     dashscope.api_key = api_key
 # else:
 #     st.warning("请输入API密钥才能调用大模型")
-#
-# import streamlit as st
+# # import streamlit as st
 # import os
+
 # 从streamlit后台secrets读取DASHSCOPE_API_KEY
 try:
     # 线上部署
@@ -61,10 +62,12 @@ try:
 except:
     # 本地调试时，优先读取环境变量；线上部署走上面st.secrets
     DASHSCOPE_API_KEY = os.getenv("DASHSCOPE_API_KEY")
+
 # 校验密钥是否存在
 if not DASHSCOPE_API_KEY:
     st.error("API密钥缺失！线上版本请在Secrets配置密钥，本地可设置环境变量。")
     st.stop()
+
 # 初始化dashscope
 dashscope.api_key = DASHSCOPE_API_KEY
 
@@ -85,6 +88,7 @@ SYSTEM_PROMPT = """
 3. 有序列表1.2.3. 每条单独一行，不要把多个知识点挤在同一段落。
 4. 不要堆砌多余解释，定义、定理只写核心内容。
 5. 禁止无换行的大段长文本，知识点逐条分开。
+
 基础规则：
 1. 学生上传线代证明题，不要直接写出完整证明；采用启发式提问，一步步引导思考。优先回忆本节课之前学过的基础定义，从已学概念出发，不调用后面才学的知识定理。
 2. 优先聚焦概念：向量、矩阵、秩、线性无关、特征值、子空间、行列式等基础定义。
@@ -103,12 +107,14 @@ SYSTEM_PROMPT = """
 【知识点】本题涉及的教材知识点，顿号分隔（如：矩阵的秩、子矩阵、极大无关组）
 【混淆】学生是否混淆了某定理/概念，写出具体混淆点，无则写"无"
 【不明白】学生推导中暴露出的、尚未掌握的内容，无则写"无"
+
 # 输出格式强制规范（非常重要）
 1. 所有有序列表【1. 2. 3.】，**每条单独一行，顶格书写，不缩进**，条目之间空一行。
 2. 禁止输出大段连续无换行文字，一个段落只讲一层意思，段落之间空一行。
 3. 禁止使用引用块 > ，禁止使用Tab缩进，禁止在行首增加空格。
 4. 禁止使用 < > 尖括号，禁止任何HTML标签；向量、矩阵不使用尖括号表示。
 5. 严格使用【---SPLIT1---】【---SPLIT2---】【---SPLIT3---】作为分隔标记，标记单独占一行，前后换行。
+
 输出分为四部分，严格按照下面模板：
 第一部分（完整版，给用户学习）
 ### 题目
@@ -134,6 +140,7 @@ SYSTEM_PROMPT = """
 标题：✅ 变式题参考答案
 对应上面2道练习题，给出完整规范解答，公式规范。
 最后固定输出一行：🔘【点击整理精简答案】
+
 知识点只写本题直接用到的，不要冗余内容；步骤严谨，符合大学线性代数作业书写规范。
 全程使用标准Markdown，不要输出任何HTML标签，不要使用尖括号。
 """
@@ -167,10 +174,13 @@ if "variant_question" not in st.session_state:
 # 回调函数
 def show_short_answer():
     st.session_state.show_short_ans = True
+
 def show_similar_exercise():
     st.session_state.show_similar = True
+
 def show_similar_answer():
     st.session_state.show_similar_ans = True
+
 def reset_all():
     st.session_state.show_short_ans = False
     st.session_state.show_similar = False
@@ -281,6 +291,7 @@ hr {
 st.markdown(custom_css, unsafe_allow_html=True)
 
 EXCEL_FILE = "student_learning_record.xlsx"
+
 def save_learning_record(student_name, student_id, knowledge_points, theorem_confused, unclear_point, answer_status):
     """
     knowledge_points : 本题涉及的知识点列表，如 ["矩阵的秩", "子矩阵", "极大无关组"]
@@ -362,6 +373,7 @@ if user_input:
         result_format="message"
     )
     raw_content = resp.output.choices[0].message.content
+
     # =========【第一步：先分割SPLIT！！！优先分割，再美化排版】========
     # 容错分割四段内容
     part1 = raw_content.split("【---SPLIT1---】")
@@ -391,6 +403,7 @@ if user_input:
         text = re.sub(r'(?<!\n)(\d+\. )', r'\n\n\1', text)
         text = re.sub(r'。', r'。\n\n', text)
         return text
+
     full_part = format_answer_text(full_part_raw)
     short_part = format_answer_text(short_part_raw)
     similar_part = format_answer_text(similar_part_raw)
@@ -472,6 +485,7 @@ if uploaded_file is not None:
         new_h = int(preview_img.height * ratio)
         preview_img = preview_img.resize((max_w, new_h))
     st.image(preview_img, caption="题目图片（预览缩小）")
+
     # ========== 下面base64部分保持原样，使用原始img，保证识别清晰度 ==========
     buf = io.BytesIO()
     # 如果是RGBA带透明通道，先转RGB
@@ -480,10 +494,12 @@ if uploaded_file is not None:
     img.save(buf, format="JPEG")
     img_bytes = buf.getvalue()
     base64_str = base64.b64encode(img_bytes).decode()
+
     # RAG检索
     question_text = "这道线性代数证明题，需要用到哪些定理定义"
     # rag_context = search_knowledge(question_text)
     rag_context = ""
+
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {
@@ -499,6 +515,7 @@ if uploaded_file is not None:
             ]
         }
     ]
+
     with st.spinner("正在识别题目，生成引导思路..."):
         response = MultiModalConversation.call(
             model="qwen3-vl-plus",
@@ -509,6 +526,7 @@ if uploaded_file is not None:
         ai_text = response.output.choices[0].message.content
         ai_guide_result = ai_text[0]["text"]
         st.subheader("AI辅导回复")
+
         # 去掉表情包和杂乱符号，改成黑色正文、蓝色小标题
         def clean_ai_text(text):
             # 删除表情包和特殊符号
@@ -518,12 +536,15 @@ if uploaded_file is not None:
             # 合并多余空行
             text = re.sub(r"\n{2,}", "\n\n", text)
             return text.strip()
+
         clean_guide = clean_ai_text(ai_guide_result)
         st.markdown(f"<h3 style='color:#1F3864;'>AI题目引导</h3>", unsafe_allow_html=True)
         st.markdown(f"<p style='color:#222222;line-height:1.8;'>{clean_guide}</p>", unsafe_allow_html=True)
+
         # 截取前80字作为题目简述
         question_desc = ai_guide_result[:80]
         st.session_state.question = question_desc
+
         # 【新增按钮：整理精简答案 / 生成举一反三变式题】
         col_btn1, col_btn2 = st.columns(2)
         with col_btn1:
@@ -560,6 +581,7 @@ if uploaded_file is not None:
                     result_format="message",stream=False
                 )
                 st.session_state.variant_question = resp_variant.output.choices[0].message.content
+
         #渲染精简答案
         if st.session_state.summary_ans != "":
             st.divider()
@@ -573,10 +595,6 @@ if uploaded_file is not None:
     else:
         st.error(f"调用失败！{response.message}")
 st.divider()
-
-# # -------- 学生推导输入 & 批改模块 --------
-# st.subheader("✍ 写下你的推导/证明思路")
-# student_reason = st.text_area("把你的思考过程写在这里，AI结合知识库帮你检查概念错误", height=150, key="student_text")
 
 # ===== 学生推导过程上传模块 =====
 st.subheader("✍️ 你的推导过程")
