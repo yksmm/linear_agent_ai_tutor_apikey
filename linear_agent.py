@@ -25,9 +25,42 @@ def format_answer_text(raw_str):
     text = re.sub(r'<.*?>', '', raw_str)
     text = re.sub(r'(?<!\n)(\d+\. )', r'\n\n\1', text)
     return text
+
+# ======================【新增：LaTeX符号修复函数，全局调用！】======================
+def fix_latex_symbols(text: str) -> str:
+    """
+    修复裸写希腊字母delta/eta/rank等，自动加上$ $，修正mathrm格式
+    解决输出 delta_1 而不是 $\delta_1$ 的渲染bug
+    """
+    # 1.替换希腊字母
+    replace_map = [
+        (r"delta", r"$\delta$"),
+        (r"eta", r"$\eta$"),
+        (r"alpha", r"$\alpha$"),
+        (r"beta", r"$\beta$"),
+        (r"gamma", r"$\gamma$"),
+        (r"lambda", r"$\lambda$"),
+        (r"xi", r"$\xi$"),
+        (r"zeta", r"$\zeta$"),
+    ]
+    # 处理带下标，例如 delta_1 → $\delta_1$
+    for plain, latex in replace_map:
+        # 匹配 delta_1 / delta_2
+        pattern = re.compile(rf"{plain}(_\d+)")
+        text = pattern.sub(rf"{latex}\1", text)
+        # 匹配单独 delta
+        text = re.sub(rf"\b{plain}\b", latex, text)
+
+    # 修复 rank 裸写 → $\mathrm{rank}$
+    text = re.sub(r"\brank\b(?!\$)", r"$\mathrm{rank}$", text)
+    # 修复错误 \mathrm{rank}{A} → \mathrm{rank}(A)
+    text = re.sub(r"\\mathrm\{rank\}\{", r"\\mathrm{rank}(", text)
+
+    return text
+
 # =====================================================
 
-# 希腊字母自动补LaTeX包裹
+# 希腊字母自动补LaTeX包裹 greek_dict（保留原有变量，虽然现在使用fix_latex_symbols）
 greek_dict = {
     r'delta': r'$\delta$',
     r'rank': r'$\mathrm{rank}$',
@@ -107,7 +140,6 @@ SYSTEM_PROMPT = """
 【知识点】本题涉及的教材知识点，顿号分隔（如：矩阵的秩、子矩阵、极大无关组）
 【混淆】学生是否混淆了某定理/概念，写出具体混淆点，无则写"无"
 【不明白】学生推导中暴露出的、尚未掌握的内容，无则写"无"
-
 # 输出格式强制规范（非常重要）
 1. 所有有序列表【1. 2. 3.】，**每条单独一行，顶格书写，不缩进**，条目之间空一行。
 2. 禁止输出大段连续无换行文字，一个段落只讲一层意思，段落之间空一行。
@@ -397,11 +429,13 @@ if user_input:
         short_part_raw = "⚠ 精简答案生成失败，请重新提问"
         similar_part_raw = "⚠ 变式练习题生成失败，请重新提问"
 
-    # =========【第二步：对每一段单独执行排版美化】========
+    # =========【第二步：对每一段单独执行排版美化 + LaTeX符号修复】========
     def format_answer_text(raw_str):
         text = re.sub(r'<.*?>', '', raw_str)
         text = re.sub(r'(?<!\n)(\d+\. )', r'\n\n\1', text)
         text = re.sub(r'。', r'。\n\n', text)
+        # 新增调用符号修复
+        text = fix_latex_symbols(text)
         return text
 
     full_part = format_answer_text(full_part_raw)
@@ -434,13 +468,11 @@ if user_input:
 #     chunk_overlap=100,
 #     separators=["\n\n", "\n", "。", "；"]
 # )
-#
-# if os.path.exists(PERSIST_DIR):
+# # if os.path.exists(PERSIST_DIR):
 #     vector_db = Chroma(persist_directory=PERSIST_DIR, embedding_function=embedding_model)
 # else:
 #     vector_db = Chroma(embedding_function=embedding_model, persist_directory=PERSIST_DIR)
-#
-# # 检索函数
+# # # 检索函数
 # def search_knowledge(query, top_k=2):
 #     docs = vector_db.similarity_search(query, k=top_k)
 #     content = "\n".join([doc.page_content for doc in docs])
@@ -477,7 +509,7 @@ ai_guide_result = ""
 question_desc = ""
 if uploaded_file is not None:
     img = Image.open(uploaded_file)
-    # ========== 网页预览用缩小图，不影响AI识别 ==========
+    # ========== 网页预览用缩小图，不影响AI识别清晰度 ==========
     preview_img = img.copy()
     max_w = 400
     if preview_img.width > max_w:
@@ -525,6 +557,8 @@ if uploaded_file is not None:
     if response.status_code == 200:
         ai_text = response.output.choices[0].message.content
         ai_guide_result = ai_text[0]["text"]
+        # 调用LaTeX修复！！图片返回内容也要修复希腊字母
+        ai_guide_result = fix_latex_symbols(ai_guide_result)
         st.subheader("AI辅导回复")
 
         # 去掉表情包和杂乱符号，改成黑色正文、蓝色小标题
@@ -535,6 +569,7 @@ if uploaded_file is not None:
                 "", text)
             # 合并多余空行
             text = re.sub(r"\n{2,}", "\n\n", text)
+            text = fix_latex_symbols(text)
             return text.strip()
 
         clean_guide = clean_ai_text(ai_guide_result)
@@ -563,7 +598,8 @@ if uploaded_file is not None:
                     messages=[{"role":"system","content":"只做精简整理，不新增知识点"},{"role":"user","content":summary_prompt}],
                     result_format="message",stream=False
                 )
-                st.session_state.summary_ans = resp_summary.output.choices[0].message.content
+                raw_sum = resp_summary.output.choices[0].message.content
+                st.session_state.summary_ans = fix_latex_symbols(raw_sum)
         with col_btn2:
             if st.button("🔁生成举一反三变式题", key="btn_variant"):
                 variant_prompt = f"""
@@ -580,7 +616,8 @@ if uploaded_file is not None:
                     messages=[{"role":"system","content":"线代助教，生成变式题与实例，不给答案"},{"role":"user","content":variant_prompt}],
                     result_format="message",stream=False
                 )
-                st.session_state.variant_question = resp_variant.output.choices[0].message.content
+                raw_var = resp_variant.output.choices[0].message.content
+                st.session_state.variant_question = fix_latex_symbols(raw_var)
 
         #渲染精简答案
         if st.session_state.summary_ans != "":
@@ -625,6 +662,7 @@ with tab1:
                 result_format="message"
             )
             feedback = resp.output.choices[0].message.content
+            feedback = fix_latex_symbols(feedback)
         st.markdown("### 📋 AI反馈")
         st.markdown(feedback)
 
@@ -678,9 +716,10 @@ with tab2:
 
                         if resp_img.status_code == 200:
                             feedback_img = resp_img.output.choices[0].message.content[0]["text"]
-                            # 简单清理文本
+                            # 简单清理文本 + LaTeX修复
                             feedback_img = re.sub(r'<.*?>', '', feedback_img)
                             feedback_img = re.sub(r'(?<!\n)(\d+\. )', r'\n\n\1', feedback_img)
+                            feedback_img = fix_latex_symbols(feedback_img)
                             st.markdown("### 📝 AI反馈")
                             st.markdown(feedback_img)
                         else:
@@ -762,3 +801,4 @@ if os.path.exists(file_name):
         st.markdown("####  本条记录详情")
         for col_name in df_all.columns:
             st.write(f"**{col_name}：** {selected_row[col_name]}")
+
