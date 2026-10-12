@@ -24,14 +24,12 @@ def format_answer_text(raw_str):
     text = re.sub(r'<.*?>', '', raw_str)
     text = re.sub(r'(?<!\n)(\d+\. )', r'\n\n\1', text)
     return text
-
 def strip_latex_dollar(text: str) -> str:
     """
     移除字符串首尾$，用于给st.latex使用；
     本项目主要用st.markdown，一般不调用此函数，保留备用
     """
     return re.sub(r"^\$+|\$+$", "", text.strip())
-
 # ======================【LaTeX预处理｜移除重复$$，不再自动裸词转换】======================
 def fix_latex_symbols(text: str) -> str:
     """
@@ -179,6 +177,10 @@ if "summary_ans" not in st.session_state:
     st.session_state.summary_ans = ""
 if "variant_question" not in st.session_state:
     st.session_state.variant_question = ""
+# =========教师面板会话状态============
+if "teacher_unlock" not in st.session_state:
+    st.session_state.teacher_unlock = False
+
 # 回调函数
 def show_short_answer():
     st.session_state.show_short_ans = True
@@ -721,18 +723,28 @@ with col_bottom2:
     if st.button("➡️ 下一题"):
         reset_question()
         st.success("准备好接收下一题，请上传新题目图片")
-# ========== 教师学情查看面板 ==========
+
+# ========== 教师学情查看面板==========
 st.divider()
-st.subheader(" 教师学情查看面板")
-st.info("教师可直接查看全部学生学习记录，无需打开Excel文件")
-file_name = "student_learning_record.xlsx"
-if os.path.exists(file_name):
-    df_all = pd.read_excel(file_name)
-    st.dataframe(df_all, use_container_width=True)
-    record_options = df_all["记录时间"].tolist()
-    if len(record_options) > 0:
-        selected_time = st.selectbox("选择一条记录，查看完整详情", record_options)
-        selected_row = df_all[df_all["记录时间"] == selected_time].iloc[0]
-        st.markdown("####  本条记录详情")
-        for col_name in df_all.columns:
-            st.write(f"**{col_name}：** {selected_row[col_name]}")
+st.subheader("👩‍🏫 教师学情查看面板")
+# 【演示专用：取消密码输入，直接开启教师权限；正式上线务必恢复密码！】
+st.session_state.teacher_unlock = True
+st.success("✅教师面板已解锁，可以查看全部学情数据")
+
+if st.session_state.teacher_unlock:
+    st.info("教师可直接查看全部学生学习记录，无需打开Excel文件")
+    file_name = "student_learning_record.xlsx"
+    if os.path.exists(file_name):
+        df_all = pd.read_excel(file_name)
+        st.dataframe(df_all, use_container_width=True)
+        record_options = df_all["记录时间"].tolist()
+        if len(record_options) > 0:
+            selected_time = st.selectbox("选择一条记录，查看完整详情", record_options)
+            selected_row = df_all[df_all["记录时间"] == selected_time].iloc[0]
+            st.markdown("#### 本条记录详情")
+            for col_name in df_all.columns:
+                st.write(f"**{col_name}：** {selected_row[col_name]}")
+    else:
+        st.warning("学情记录文件 student_learning_record.xlsx 尚未生成，请等待学生完成答题产生记录。")
+
+
