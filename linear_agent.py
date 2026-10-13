@@ -18,21 +18,18 @@ import streamlit as st
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
-
 # =====【文本自动分段美化函数｜兼容LaTeX公式】=====
 def format_answer_text(raw_str):
     # 清除多余html标签
     text = re.sub(r'<.*?>', '', raw_str)
     text = re.sub(r'(?<!\n)(\d+\. )', r'\n\n\1', text)
     return text
-
 def strip_latex_dollar(text: str) -> str:
     """
     移除字符串首尾$，用于给st.latex使用；
     本项目主要用st.markdown，一般不调用此函数，保留备用
     """
     return re.sub(r"^\$+|\$+$", "", text.strip())
-
 # ======================【LaTeX预处理｜移除重复$$，不再自动裸词转换】======================
 def fix_latex_symbols(text: str) -> str:
     """
@@ -47,7 +44,40 @@ def fix_latex_symbols(text: str) -> str:
     text = re.sub(r'\\mathrm\s*\{\s*rank\s*\}', r'\\mathrm{rank}', text)
     # 修复 \mathrm{rank}{A} → \mathrm{rank}(A)
     text = re.sub(r"\\mathrm\{rank\}\{", r"\\mathrm{rank}(", text)
+    # 修复转义反斜杠被双转义问题（图片多模态返回经常出现\\delta）
+    text = re.sub(r'\\\\([a-zA-Z]+)', r'\\\1', text)
+    # 修复 $ 前后多余空格
+    text = re.sub(r'\$\s+', r'$', text)
+    text = re.sub(r'\s+\$', r'$', text)
     return text
+
+# ======================【从AI文本自动提取学情字段：知识点、混淆、未掌握】======================
+def extract_knowledge_confuse_unclear(ai_full_text:str):
+    """
+    解析AI输出末尾固定标记：【知识点】【混淆】【不明白】
+    返回 (knowledge_list, confuse_str, unclear_str)
+    解析失败返回默认值
+    """
+    knowledge_list = ["未提取"]
+    confuse_str = "无"
+    unclear_str = "无"
+    if not ai_full_text:
+        return knowledge_list, confuse_str, unclear_str
+    # 提取知识点
+    match_kp = re.search(r"【知识点】(.+?)(?=【混淆】|$)", ai_full_text, re.DOTALL)
+    if match_kp:
+        kp_raw = match_kp.group(1).strip()
+        if kp_raw:
+            knowledge_list = [x.strip() for x in kp_raw.split("、") if x.strip()]
+    # 提取混淆
+    match_conf = re.search(r"【混淆】(.+?)(?=【不明白】|$)", ai_full_text, re.DOTALL)
+    if match_conf:
+        confuse_str = match_conf.group(1).strip()
+    # 提取不明白
+    match_unclear = re.search(r"【不明白】(.+?)$", ai_full_text, re.DOTALL)
+    if match_unclear:
+        unclear_str = match_unclear.group(1).strip()
+    return knowledge_list, confuse_str, unclear_str
 
 # =====================================================
 # 希腊字母自动补LaTeX包裹 greek_dict（保留原有变量，虽然现在使用fix_latex_symbols）
@@ -56,7 +86,6 @@ greek_dict = {
     r'rank': r'$\mathrm{rank}$',
     r'mathbb': r'$\mathbb'
 }
-
 # ====重置函数：清空答题状态，保留学情记录====
 def reset_question():
     st.session_state.ai_answer = ""
@@ -70,7 +99,6 @@ def reset_question():
     if "student_img" in st.session_state:
         del st.session_state["student_img"]
     st.rerun()
-
 # # ====密钥输入框，网页上手动输入=====
 # api_key = st.text_input("请输入DashScope API密钥", type="password")
 # if api_key:
@@ -86,21 +114,17 @@ try:
 except:
     # 本地调试时，优先读取环境变量；线上部署走上面st.secrets
     DASHSCOPE_API_KEY = os.getenv("DASHSCOPE_API_KEY")
-
 # 校验密钥是否存在
 if not DASHSCOPE_API_KEY:
     st.error("API密钥缺失！线上版本请在Secrets配置密钥，本地可设置环境变量。")
     st.stop()
-
 # 初始化dashscope
 dashscope.api_key = DASHSCOPE_API_KEY
-
 # # RAG相关导入
 # from langchain_community.document_loaders import PyPDFLoader
 # from langchain_text_splitters import RecursiveCharacterTextSplitter
 # from langchain_community.vectorstores import Chroma
 # from langchain_community.embeddings import HuggingFaceEmbeddings
-
 # ====================== 系统提示词 ======================
 SYSTEM_PROMPT = """
 你是一名大学线性代数辅导助教，核心目标：帮助学生理解线性代数核心定义、定理与证明，严禁直接给出完整证明答案,严格依据邱维声《高等代数（第四版）》教材内容进行引导。
@@ -112,7 +136,6 @@ SYSTEM_PROMPT = """
 3. 有序列表1.2.3. 每条单独一行，不要把多个知识点挤在同一段落。
 4. 不要堆砌多余解释，定义、定理只写核心内容。
 5. 禁止无换行的大段长文本，知识点逐条分开。
-
 基础规则：
 1. 学生上传线代证明题，不要直接写出完整证明；采用启发式提问，一步步引导思考。优先回忆本节课之前学过的基础定义，从已学概念出发，不调用后面才学的知识定理。
 2. 优先聚焦概念：向量、矩阵、秩、线性无关、特征值、子空间、行列式等基础定义。
@@ -131,14 +154,12 @@ SYSTEM_PROMPT = """
 【知识点】本题涉及的教材知识点，顿号分隔（如：矩阵的秩、子矩阵、极大无关组）
 【混淆】学生是否混淆了某定理/概念，写出具体混淆点，无则写"无"
 【不明白】学生推导中暴露出的、尚未掌握的内容，无则写"无"
-
 # 输出格式强制规范（非常重要）
 1. 所有有序列表【1. 2. 3.】，**每条单独一行，顶格书写，不缩进**，条目之间空一行。
 2. 禁止输出大段连续无换行文字，一个段落只讲一层意思，段落之间空一行。
 3. 禁止使用引用块 > ，禁止使用Tab缩进，禁止在行首增加空格。
 4. 禁止使用 < > 尖括号，禁止任何HTML标签；向量、矩阵不使用尖括号表示。
 5. 严格使用【---SPLIT1---】【---SPLIT2---】【---SPLIT3---】作为分隔标记，标记单独占一行，前后换行。
-
 输出分为四部分，严格按照下面模板：
 第一部分（完整版，给用户学习）
 ### 题目
@@ -164,11 +185,9 @@ SYSTEM_PROMPT = """
 标题：✅ 变式题参考答案
 对应上面2道练习题，给出完整规范解答，公式规范。
 最后固定输出一行：🔘【点击整理精简答案】
-
 知识点只写本题直接用到的，不要冗余内容；步骤严谨，符合大学线性代数作业书写规范。
 全程使用标准Markdown，不要输出任何HTML标签，不要使用尖括号。
 """
-
 # ======初始化会话状态=======
 if "ai_answer" not in st.session_state:
     st.session_state.ai_answer = ""
@@ -202,21 +221,24 @@ if "ai_guide_result" not in st.session_state:
     st.session_state.ai_guide_result = ""
 if "last_feedback" not in st.session_state:
     st.session_state.last_feedback = ""
+# 新增会话：自动提取的学情字段
+if "auto_know_list" not in st.session_state:
+    st.session_state.auto_know_list = ["未提取"]
+if "auto_confuse" not in st.session_state:
+    st.session_state.auto_confuse = "无"
+if "auto_unclear" not in st.session_state:
+    st.session_state.auto_unclear = "无"
 
 # =========教师面板会话状态============
 if "teacher_unlock" not in st.session_state:
     st.session_state.teacher_unlock = False
-
 # 回调函数
 def show_short_answer():
     st.session_state.show_short_ans = True
-
 def show_similar_exercise():
     st.session_state.show_similar = True
-
 def show_similar_answer():
     st.session_state.show_similar_ans = True
-
 def reset_all():
     st.session_state.show_short_ans = False
     st.session_state.show_similar = False
@@ -226,10 +248,8 @@ def reset_all():
     st.session_state.similar_text = ""
     st.session_state.similar_ans_text = ""
     st.rerun()
-
 # ====================== Streamlit页面开始 ======================
 st.set_page_config(page_title="线代启明星", layout="wide")
-
 # ====限制内容宽度 + 修复行高=====
 st.markdown("""
 <style>
@@ -242,9 +262,7 @@ st.markdown("""
     }
 </style>
 """, unsafe_allow_html=True)
-
 st.markdown("<h1 style='color:#1F3864;'>线代启明星｜启真问智大赛</h1>", unsafe_allow_html=True)
-
 # 美化上传框CSS，支持拖拽
 custom_css = """
 <style>
@@ -325,13 +343,10 @@ hr {
 </style>
 """
 st.markdown(custom_css, unsafe_allow_html=True)
-
 # ===================== 顶部标签页切换：学生端 / 教师端 =====================
 tab_student, tab_teacher = st.tabs(["👨‍🎓 学生端", "👩‍🏫 教师端"])
-
 with tab_student:
     EXCEL_FILE = "student_learning_record.xlsx"
-
     def save_learning_record(student_name, student_id, knowledge_points, theorem_confused, unclear_point, answer_status):
         """
         knowledge_points : 本题涉及的知识点列表，如 ["矩阵的秩", "子矩阵", "极大无关组"]
@@ -347,7 +362,6 @@ with tab_student:
             headers = ["学生姓名", "学号", "涉及知识点", "定理混淆", "不明白的内容", "作答状态", "记录时间"]
             ws.append(headers)
             wb.save(EXCEL_FILE)
-
         wb = openpyxl.load_workbook(EXCEL_FILE)
         ws = wb["学情记录"]
         # 一条记录一行；知识点用顿号/分号拼接
@@ -357,7 +371,6 @@ with tab_student:
         ws.append(new_row)
         beautify_sheet(ws)
         wb.save(EXCEL_FILE)
-
     # ========美化excel表格函数========
     def beautify_sheet(ws):
         # 表头样式
@@ -388,7 +401,6 @@ with tab_student:
         # 冻结表头（滚动时表头固定）
         ws.freeze_panes = "A2"
         ws.row_dimensions[1].height = 24
-
     def save_study_record(question_desc, student_reason, ai_guide, ai_check):
         save_learning_record(
             student_name="匿名",
@@ -398,7 +410,6 @@ with tab_student:
             unclear_point="无",
             answer_status="学生作答"
         )
-
     # ========== 处理用户提问 ==========
     # 输入框，把用户输入保存到 user_input 变量
     user_input = st.text_area("请输入你的线代问题：", height=180)
@@ -414,7 +425,6 @@ with tab_student:
             result_format="message"
         )
         raw_content = resp.output.choices[0].message.content
-
         # =========【第一步：先分割SPLIT！！！优先分割，再美化排版】========
         # 容错分割四段内容
         part1 = raw_content.split("【---SPLIT1---】")
@@ -437,7 +447,6 @@ with tab_student:
             full_part_raw = raw_content
             short_part_raw = "⚠ 精简答案生成失败，请重新提问"
             similar_part_raw = "⚠ 变式练习题生成失败，请重新提问"
-
         # =========【第二步：对每一段单独执行排版美化 + LaTeX符号修复】========
         def format_answer_text(raw_str):
             text = re.sub(r'<.*?>', '', raw_str)
@@ -446,16 +455,20 @@ with tab_student:
             # 新增调用符号修复
             text = fix_latex_symbols(text)
             return text
-
         full_part = format_answer_text(full_part_raw)
         short_part = format_answer_text(short_part_raw)
         similar_part = format_answer_text(similar_part_raw)
+
+        # 自动提取学情字段存入session
+        k_list, c_str, u_str = extract_knowledge_confuse_unclear(raw_content)
+        st.session_state.auto_know_list = k_list
+        st.session_state.auto_confuse = c_str
+        st.session_state.auto_unclear = u_str
 
         # 存入session_state
         st.session_state.full_text = full_part
         st.session_state.short_text = short_part
         st.session_state.similar_text = similar_part
-
         # =========页面渲染展示========
         st.subheader("📘 结果展示")
         with st.expander("📖 查看完整解答", expanded=True):
@@ -468,7 +481,6 @@ with tab_student:
         with col2:
             st.subheader("🔁 同类题思路")
             st.warning(similar_part)
-
     # ====================== RAG知识库配置 ======================
     # PERSIST_DIR = "./chroma_db"
     # embedding_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
@@ -486,13 +498,11 @@ with tab_student:
     #     docs = vector_db.similarity_search(query, k=top_k)
     #     content = "\n".join([doc.page_content for doc.page_content])
     #     return content
-
     # =========【提交按钮】=========
     # 初始化默认值，防止提取失败时报错
     ai_knowledge_points = []
     ai_confused_theorem = "无"
     ai_unclear_point = "无"
-
     # -------- RAG知识库上传区域 --------
     st.subheader("上传线性代数PDF知识库（讲义/定理）")
     pdf_file = st.file_uploader("上传PDF文件", type=["pdf"], key="pdf_upload")
@@ -505,9 +515,7 @@ with tab_student:
         # vector_db.add_documents(split_docs)
         # vector_db.persist()
         st.success("✅PDF知识库导入完成！已存入向量库")
-
     st.divider()
-
     # -------- 图片上传与题目AI引导 --------
     st.subheader("上传线性代数证明题图片（可直接拖拽图片到框内）")
     uploaded_file = st.file_uploader(
@@ -517,7 +525,6 @@ with tab_student:
     )
     ai_guide_result = ""
     question_desc = ""
-
     if uploaded_file is not None:
         img = Image.open(uploaded_file)
         # ========== 网页预览用缩小图，不影响AI识别清晰度 ==========
@@ -528,7 +535,6 @@ with tab_student:
             new_h = int(preview_img.height * ratio)
             preview_img = preview_img.resize((max_w, new_h))
         st.image(preview_img, caption="题目图片（预览缩小）")
-
         # ========== 下面base64部分保持原样，使用原始img，保证识别清晰度 ==========
         buf = io.BytesIO()
         # 如果是RGBA带透明通道，先转RGB
@@ -537,12 +543,10 @@ with tab_student:
         img.save(buf, format="JPEG")
         img_bytes = buf.getvalue()
         base64_str = base64.b64encode(img_bytes).decode()
-
         # RAG检索
         question_text = "这道线性代数证明题，需要用到哪些定理定义"
         # rag_context = search_knowledge(question_text)
         rag_context = ""
-
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
             {
@@ -557,7 +561,6 @@ with tab_student:
                 ]
             }
         ]
-
         with st.spinner("正在识别题目，生成引导思路..."):
             response = MultiModalConversation.call(
                 model="qwen3-vl-plus",
@@ -569,10 +572,11 @@ with tab_student:
             ai_guide_result = ai_text[0]["text"]
             #保存到session，学情要用
             st.session_state.ai_guide_result = ai_guide_result
-            # 调用LaTeX修复！！图片返回内容也要修复希腊字母
-            ai_guide_result = fix_latex_symbols(ai_guide_result)
-            st.subheader("AI辅导回复")
 
+            # =========重点修复：图片返回AI引导文本先完整过fix_latex_symbols，再做clean_ai_text========
+            ai_guide_result = fix_latex_symbols(ai_guide_result)
+
+            st.subheader("AI辅导回复")
             # 去掉表情包和杂乱符号，改成黑色正文、蓝色小标题
             def clean_ai_text(text):
                 # 删除表情包和特殊符号
@@ -583,15 +587,12 @@ with tab_student:
                 text = re.sub(r"\n{2,}", "\n\n", text)
                 text = fix_latex_symbols(text)
                 return text.strip()
-
             clean_guide = clean_ai_text(ai_guide_result)
             st.markdown(f"<h3 style='color:#1F3864;'>AI题目引导</h3>", unsafe_allow_html=True)
             st.markdown(clean_guide)
-
             # 截取前80字作为题目简述
             question_desc = ai_guide_result[:80]
             st.session_state.question = question_desc
-
             # 【新增按钮：整理精简答案 / 生成举一反三变式题】
             col_btn1, col_btn2 = st.columns(2)
             with col_btn1:
@@ -613,7 +614,6 @@ with tab_student:
                     st.session_state.summary_ans = fix_latex_symbols(raw_sum)
                     #标记已经点击按钮
                     st.session_state.click_summary_btn = True
-
             with col_btn2:
                 if st.button("🔁生成举一反三变式题", key="btn_variant"):
                     variant_prompt = f"""
@@ -631,28 +631,22 @@ with tab_student:
                     )
                     raw_var = resp_variant.output.choices[0].message.content
                     st.session_state.variant_question = fix_latex_symbols(raw_var)
-
             #====修改关键点：只有点击按钮标记为True，才渲染精简答案====
             if st.session_state.click_summary_btn and st.session_state.summary_ans != "":
                 st.divider()
                 st.subheader("📝精简整理答案")
                 st.markdown(st.session_state.summary_ans)
-
             #渲染变式题
             if st.session_state.variant_question != "":
                 st.divider()
                 st.subheader("🔁举一反三变式题")
                 st.markdown(st.session_state.variant_question)
-
         else:
             st.error(f"调用失败！{response.message}")
-
     st.divider()
-
     # ===== 学生推导过程上传模块 =====
     st.subheader("✍️ 你的推导过程")
     tab1, tab2 = st.tabs(["📝 文字输入推导", "🖼️ 上传手写照片"])
-
     with tab1:
         # 文本输入框，保存到session_state
         student_text = st.text_area(
@@ -681,9 +675,13 @@ with tab_student:
                 feedback = resp.output.choices[0].message.content
                 feedback = fix_latex_symbols(feedback)
                 st.session_state.last_feedback = feedback
+                #批改返回结果自动提取学情
+                kp_list_cf, conf_cf, un_cf = extract_knowledge_confuse_unclear(feedback)
+                st.session_state.auto_know_list = kp_list_cf
+                st.session_state.auto_confuse = conf_cf
+                st.session_state.auto_unclear = un_cf
             st.markdown("### 📋 AI反馈")
             st.markdown(feedback)
-
     with tab2:
         st.subheader("📷 上传手写推导，AI直接识别图片批改")
         upload_img = st.file_uploader("上传手写推导图片（jpg/png，小于7MB）", type=["jpg","png","jpeg"], key="student_img")
@@ -705,7 +703,6 @@ with tab_student:
                 buffer.close()
                 base64_str = base64.b64encode(compressed_bytes).decode("utf-8")
                 st.image(img, caption="预览你的手写推导", use_column_width=True)
-
                 if st.button("提交图片，AI启发式批改", key="submit_img_btn"):
                     with st.spinner("正在识别手写推导并分析..."):
                         try:
@@ -735,17 +732,21 @@ with tab_student:
                                 feedback_img = re.sub(r'(?<!\n)(\d+\. )', r'\n\n\1', feedback_img)
                                 feedback_img = fix_latex_symbols(feedback_img)
                                 st.session_state.last_feedback = feedback_img
+                                #图片批改返回自动提取学情
+                                kp_img, conf_img, un_img = extract_knowledge_confuse_unclear(feedback_img)
+                                st.session_state.auto_know_list = kp_img
+                                st.session_state.auto_confuse = conf_img
+                                st.session_state.auto_unclear = un_img
+
                                 st.markdown("### 📝 AI反馈")
                                 st.markdown(feedback_img)
                             else:
                                 st.error(f"接口返回错误：code={resp_img.status_code}, msg={resp_img.message}")
                         except Exception as e:
                             st.error(f"调用出错：{e}")
-
         # 重置按钮
         if st.button("清空我的推导", on_click=reset_question):
             st.success("已清空")
-
     # ============新增：手动保存上传学情记录按钮=================
     st.divider()
     st.subheader("💾保存本次学习学情记录")
@@ -755,9 +756,9 @@ with tab_student:
             s_name = st.text_input("学生姓名",value="匿名")
         with col_save2:
             s_id = st.text_input("学生学号",value="匿名")
-        know_text = st.text_input("涉及知识点（顿号分隔）",value="未提取")
-        confuse_text = st.text_input("混淆概念",value="无")
-        unclear_text = st.text_input("未掌握内容",value="无")
+        know_text = st.text_input("涉及知识点（顿号分隔）",value="、".join(st.session_state.auto_know_list))
+        confuse_text = st.text_input("混淆概念",value=st.session_state.auto_confuse)
+        unclear_text = st.text_input("未掌握内容",value=st.session_state.auto_unclear)
         status_sel = st.selectbox("作答状态",["引导后完成","部分完成","未完成"])
         if st.button("✅保存本次学情记录到Excel"):
             kp_list = know_text.split("、") if know_text else ["未提取"]
@@ -770,7 +771,6 @@ with tab_student:
                 answer_status=status_sel
             )
             st.success("✅学情记录已经保存到 student_learning_record.xlsx！教师面板可以查看。")
-
     # ====重置、下一题按钮放在学生tab页面底部====
     col_bottom1, col_bottom2 = st.columns(2)
     with col_bottom1:
@@ -779,7 +779,6 @@ with tab_student:
         if st.button("➡️ 下一题"):
             reset_question()
             st.success("准备好接收下一题，请上传新题目图片")
-
 # ===================== 独立教师端标签页 =====================
 with tab_teacher:
     st.subheader("👩‍🏫 教师学情查看面板")
