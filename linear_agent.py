@@ -50,7 +50,6 @@ def fix_latex_symbols(text: str) -> str:
     text = re.sub(r'\$\s+', r'$', text)
     text = re.sub(r'\s+\$', r'$', text)
     return text
-
 # ======================【从AI文本自动提取学情字段：知识点、混淆、未掌握】======================
 def extract_knowledge_confuse_unclear(ai_full_text:str):
     """
@@ -78,7 +77,6 @@ def extract_knowledge_confuse_unclear(ai_full_text:str):
     if match_unclear:
         unclear_str = match_unclear.group(1).strip()
     return knowledge_list, confuse_str, unclear_str
-
 # =====================================================
 # 希腊字母自动补LaTeX包裹 greek_dict（保留原有变量，虽然现在使用fix_latex_symbols）
 greek_dict = {
@@ -228,7 +226,6 @@ if "auto_confuse" not in st.session_state:
     st.session_state.auto_confuse = "无"
 if "auto_unclear" not in st.session_state:
     st.session_state.auto_unclear = "无"
-
 # =========教师面板会话状态============
 if "teacher_unlock" not in st.session_state:
     st.session_state.teacher_unlock = False
@@ -458,13 +455,11 @@ with tab_student:
         full_part = format_answer_text(full_part_raw)
         short_part = format_answer_text(short_part_raw)
         similar_part = format_answer_text(similar_part_raw)
-
         # 自动提取学情字段存入session
         k_list, c_str, u_str = extract_knowledge_confuse_unclear(raw_content)
         st.session_state.auto_know_list = k_list
         st.session_state.auto_confuse = c_str
         st.session_state.auto_unclear = u_str
-
         # 存入session_state
         st.session_state.full_text = full_part
         st.session_state.short_text = short_part
@@ -572,16 +567,14 @@ with tab_student:
             ai_guide_result = ai_text[0]["text"]
             #保存到session，学情要用
             st.session_state.ai_guide_result = ai_guide_result
-
             # =========重点修复：图片返回AI引导文本先完整过fix_latex_symbols，再做clean_ai_text========
             ai_guide_result = fix_latex_symbols(ai_guide_result)
-
             st.subheader("AI辅导回复")
             # 去掉表情包和杂乱符号，改成黑色正文、蓝色小标题
             def clean_ai_text(text):
-                # 删除表情包和特殊符号
+                # 删除表情包和乱码，【关键：增加 \ $ 白名单，保留LaTeX公式符号】
                 text = re.sub(
-                    r"[^\w\s，。！？、；：()（）\-\—\[\]{}<>=≠≤≥±×÷∑∏∫√∂∇∈∉∋∌∩∪⊂⊃⊄⊅⊆⊇⊈⊉⊊⊋⊥∥∠°παβγδεζηθλμνξοπρστυφχψωΑΒΓΔΕΖΗΘΙΚΛΜΝΞΟΠΡΣΤΥΦΧΨΩ]+",
+                    r"[^\w\s\\$，。！？、；：()（）\-\—\[\]{}<>=≠≤≥±×÷∑∏∫√∂∇∈∉∋∌∩∪⊂⊃⊄⊅⊆⊇⊈⊉⊊⊋⊥∥∠°παβγδεζηθλμνξοπρστυφχψωΑΒΓΔΕΖΗΘΙΚΛΜΝΞΟΠΡΣΤΥΦΧΨΩ]+",
                     "", text)
                 # 合并多余空行
                 text = re.sub(r"\n{2,}", "\n\n", text)
@@ -737,7 +730,6 @@ with tab_student:
                                 st.session_state.auto_know_list = kp_img
                                 st.session_state.auto_confuse = conf_img
                                 st.session_state.auto_unclear = un_img
-
                                 st.markdown("### 📝 AI反馈")
                                 st.markdown(feedback_img)
                             else:
